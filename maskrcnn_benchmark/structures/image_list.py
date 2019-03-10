@@ -45,6 +45,7 @@ def to_image_list(tensors, size_divisible=0):
         image_sizes = [tensor.shape[-2:] for tensor in tensors]
         return ImageList(tensors, image_sizes)
     elif isinstance(tensors, (tuple, list)):
+        # 获取tensors中包含的所有图片中每个维度上的最大值
         max_size = tuple(max(s) for s in zip(*[img.shape for img in tensors]))
 
         # TODO Ideally, just remove this and let me model handle arbitrary
@@ -60,6 +61,8 @@ def to_image_list(tensors, size_divisible=0):
 
         batch_shape = (len(tensors),) + max_size
         batched_imgs = tensors[0].new(*batch_shape).zero_()
+        # 1. 将原图从左上角复制到填充后的图片,右下角位置全是0
+        # 2. zip后每次迭代的元素都是个tensor,直接对值进行修改
         for img, pad_img in zip(tensors, batched_imgs):
             pad_img[: img.shape[0], : img.shape[1], : img.shape[2]].copy_(img)
 

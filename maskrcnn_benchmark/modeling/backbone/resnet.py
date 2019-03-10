@@ -27,7 +27,6 @@ from maskrcnn_benchmark.layers import Conv2d
 from maskrcnn_benchmark.modeling.make_layers import group_norm
 from maskrcnn_benchmark.utils.registry import Registry
 
-
 # ResNet stage specification
 StageSpec = namedtuple(
     "StageSpec",
@@ -40,6 +39,8 @@ StageSpec = namedtuple(
 
 # -----------------------------------------------------------------------------
 # Standard ResNet models
+# 只用ResNet不用FPN时,只有最后一个stage输出的特征图被用于下一步处理
+# 使用FPN时,多个stage输出的特征图组成特征金字塔,用于物体检测
 # -----------------------------------------------------------------------------
 # ResNet-50 (including all stages)
 ResNet50StagesTo5 = tuple(
@@ -77,6 +78,7 @@ ResNet152FPNStagesTo5 = tuple(
     for (i, c, r) in ((1, 3, True), (2, 8, True), (3, 36, True), (4, 3, True))
 )
 
+
 class ResNet(nn.Module):
     def __init__(self, cfg):
         super(ResNet, self).__init__()
@@ -85,26 +87,43 @@ class ResNet(nn.Module):
         # of it and store it for later use:
         # self.cfg = cfg.clone()
 
-        # Translate string names to implementations
+        # 根据配置文件中的定义,从namedtuple中取出对应的函数对象
         stem_module = _STEM_MODULES[cfg.MODEL.RESNETS.STEM_FUNC]
         stage_specs = _STAGE_SPECS[cfg.MODEL.BACKBONE.CONV_BODY]
         transformation_module = _TRANSFORMATION_MODULES[cfg.MODEL.RESNETS.TRANS_FUNC]
 
-        # Construct the stem module
+        # 构建 stem module(也就是 resnet 的stage1, 或者 conv1)
         self.stem = stem_module(cfg)
 
-        # Constuct the specified ResNet stages
-        num_groups = cfg.MODEL.RESNETS.NUM_GROUPS
-        width_per_group = cfg.MODEL.RESNETS.WIDTH_PER_GROUP
+        # ↓获取相应的信息来构建 resnet 的其他 stages 的卷积层↓
+
+        # 当 num_groups=1 时为 ResNet, >1 时为 ResNeXt
+        num_groups = cfg.MODEL.RESNETS.NUM_GROUP  # 默认为1
+        width_per_group = cfg.MODEL.RESNETS.WIDTH_PER_GROUP  # 默认为64
+
+        # in_channels 指的是向后面第二阶段输入的特征图的通道数,也就是 stem 的输出通道数,默认为64
         in_channels = cfg.MODEL.RESNETS.STEM_OUT_CHANNELS
+
+        # 第二阶段输入的特征图的通道数,应该是与上面的 in_channels 相等
         stage2_bottleneck_channels = num_groups * width_per_group
-        stage2_out_channels = cfg.MODEL.RESNETS.RES2_OUT_CHANNELS
+
+        # 第二阶段的输出, resnet 系列标准模型可从 resnet 第二阶段的输出通道数判断后续的通道数
+        # 默认为256, 则后续分别为512, 1024, 2048, 若为64, 则后续分别为128, 256, 512
+        stage2_out_channels = cfg.MODEL.RESNETS.RES2_OUT_CHANNELS  # 默认为256
+
         self.stages = []
         self.return_features = {}
+
         for stage_spec in stage_specs:
             name = "layer" + str(stage_spec.index)
+
+            # 计算每个stage的输出通道数, 每经过一个stage, 通道数都会加倍
             stage2_relative_factor = 2 ** (stage_spec.index - 1)
+
+            # 计算输入特征图的通道数
             bottleneck_channels = stage2_bottleneck_channels * stage2_relative_factor
+
+            # 计算输出特征图的通道数
             out_channels = stage2_out_channels * stage2_relative_factor
             module = _make_stage(
                 transformation_module,
@@ -147,15 +166,15 @@ class ResNet(nn.Module):
 
 class ResNetHead(nn.Module):
     def __init__(
-        self,
-        block_module,
-        stages,
-        num_groups=1,
-        width_per_group=64,
-        stride_in_1x1=True,
-        stride_init=None,
-        res2_out_channels=256,
-        dilation=1
+            self,
+            block_module,
+            stages,
+            num_groups=1,
+            width_per_group=64,
+            stride_in_1x1=True,
+            stride_init=None,
+            res2_out_channels=256,
+            dilation=1
     ):
         super(ResNetHead, self).__init__()
 
@@ -195,16 +214,17 @@ class ResNetHead(nn.Module):
         return x
 
 
+# 创建 ResNet 的 residual-block
 def _make_stage(
-    transformation_module,
-    in_channels,
-    bottleneck_channels,
-    out_channels,
-    block_count,
-    num_groups,
-    stride_in_1x1,
-    first_stride,
-    dilation=1
+        transformation_module,
+        in_channels,
+        bottleneck_channels,
+        out_channels,
+        block_count,
+        num_groups,
+        stride_in_1x1,
+        first_stride,
+        dilation=1
 ):
     blocks = []
     stride = first_stride
@@ -227,15 +247,15 @@ def _make_stage(
 
 class Bottleneck(nn.Module):
     def __init__(
-        self,
-        in_channels,
-        bottleneck_channels,
-        out_channels,
-        num_groups,
-        stride_in_1x1,
-        stride,
-        dilation,
-        norm_func
+            self,
+            in_channels,
+            bottleneck_channels,
+            out_channels,
+            num_groups,
+            stride_in_1x1,
+            stride,
+            dilation,
+            norm_func
     ):
         super(Bottleneck, self).__init__()
 
@@ -249,13 +269,13 @@ class Bottleneck(nn.Module):
                 ),
                 norm_func(out_channels),
             )
-            for modules in [self.downsample,]:
+            for modules in [self.downsample, ]:
                 for l in modules.modules():
                     if isinstance(l, Conv2d):
                         nn.init.kaiming_uniform_(l.weight, a=1)
 
         if dilation > 1:
-            stride = 1 # reset to be 1
+            stride = 1  # reset to be 1
 
         # The original MSRA ResNet models have stride in the first 1x1 conv
         # The subsequent fb.torch.resnet and Caffe2 ResNe[X]t implementations have
@@ -289,7 +309,7 @@ class Bottleneck(nn.Module):
         )
         self.bn3 = norm_func(out_channels)
 
-        for l in [self.conv1, self.conv2, self.conv3,]:
+        for l in [self.conv1, self.conv2, self.conv3, ]:
             nn.init.kaiming_uniform_(l.weight, a=1)
 
     def forward(self, x):
@@ -326,7 +346,7 @@ class BaseStem(nn.Module):
         )
         self.bn1 = norm_func(out_channels)
 
-        for l in [self.conv1,]:
+        for l in [self.conv1, ]:
             nn.init.kaiming_uniform_(l.weight, a=1)
 
     def forward(self, x):
@@ -339,14 +359,14 @@ class BaseStem(nn.Module):
 
 class BottleneckWithFixedBatchNorm(Bottleneck):
     def __init__(
-        self,
-        in_channels,
-        bottleneck_channels,
-        out_channels,
-        num_groups=1,
-        stride_in_1x1=True,
-        stride=1,
-        dilation=1
+            self,
+            in_channels,
+            bottleneck_channels,
+            out_channels,
+            num_groups=1,
+            stride_in_1x1=True,
+            stride=1,
+            dilation=1
     ):
         super(BottleneckWithFixedBatchNorm, self).__init__(
             in_channels=in_channels,
@@ -369,14 +389,14 @@ class StemWithFixedBatchNorm(BaseStem):
 
 class BottleneckWithGN(Bottleneck):
     def __init__(
-        self,
-        in_channels,
-        bottleneck_channels,
-        out_channels,
-        num_groups=1,
-        stride_in_1x1=True,
-        stride=1,
-        dilation=1
+            self,
+            in_channels,
+            bottleneck_channels,
+            out_channels,
+            num_groups=1,
+            stride_in_1x1=True,
+            stride=1,
+            dilation=1
     ):
         super(BottleneckWithGN, self).__init__(
             in_channels=in_channels,

@@ -9,7 +9,7 @@ from . import fpn as fpn_module
 from . import resnet
 
 
-@registry.BACKBONES.register("R-50-C4")
+@registry.BACKBONES.register(module_name="R-50-C4")
 @registry.BACKBONES.register("R-50-C5")
 @registry.BACKBONES.register("R-101-C4")
 @registry.BACKBONES.register("R-101-C5")
@@ -76,4 +76,7 @@ def build_backbone(cfg):
         "cfg.MODEL.BACKBONE.CONV_BODY: {} are not registered in registry".format(
             cfg.MODEL.BACKBONE.CONV_BODY
         )
+
+    # cfg.MODEL.BACKBONE.CONV_BODY 默认为 R-50-C4
+    # 若使用默认设置,实际返回的是 build_resnet_backbone(cfg)
     return registry.BACKBONES[cfg.MODEL.BACKBONE.CONV_BODY](cfg)

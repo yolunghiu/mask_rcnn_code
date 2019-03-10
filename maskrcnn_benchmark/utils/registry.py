@@ -11,7 +11,7 @@ class Registry(dict):
     A helper class for managing registering modules, it extends a dictionary
     and provides a register functions.
 
-    Eg. creeting a registry:
+    Eg. creating a registry:
         some_registry = Registry({"default": default_module})
 
     There're two ways of registering new modules:
@@ -28,6 +28,7 @@ class Registry(dict):
     Access of module is just like using a dictionary, eg:
         f = some_registry["foo_modeul"]
     '''
+
     def __init__(self, *args, **kwargs):
         super(Registry, self).__init__(*args, **kwargs)
 
@@ -38,7 +39,7 @@ class Registry(dict):
             return
 
         # used as decorator
-        def register_fn(fn):
+        def register_fn(fn):  # fn是函数名,如 build_resnet_backbone
             _register_generic(self, module_name, fn)
             return fn
 

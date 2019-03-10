@@ -23,6 +23,12 @@ class GeneralizedRCNN(nn.Module):
         detections / masks from it.
     """
 
+    # 该类是 MaskrcnnBenchmark 中所有模型的共同抽象, 目前支持 boxes 和 masks 两种形式的标签
+    # 该类主要包含以下三个部分:
+    # - backbone
+    # - rpn(option)
+    # - heads: 利用前面网络输出的 features 和 proposals 来计算 detections / masks.
+
     def __init__(self, cfg):
         super(GeneralizedRCNN, self).__init__()
 
@@ -45,9 +51,14 @@ class GeneralizedRCNN(nn.Module):
         """
         if self.training and targets is None:
             raise ValueError("In training mode, targets should be passed")
+
+        # 自定义的数据结构,将不同尺寸的图片填充成相同尺寸并保存原始尺寸信息
         images = to_image_list(images)
+        # 利用 backbone 网络获取图片的 features
         features = self.backbone(images.tensors)
+        # 利用 rpn 网络获取 proposals 和相应的 loss
         proposals, proposal_losses = self.rpn(images, features, targets)
+
         if self.roi_heads:
             x, result, detector_losses = self.roi_heads(features, proposals, targets)
         else:
@@ -56,10 +67,12 @@ class GeneralizedRCNN(nn.Module):
             result = proposals
             detector_losses = {}
 
+        # 如果是训练阶段,返回所有loss
         if self.training:
             losses = {}
             losses.update(detector_losses)
             losses.update(proposal_losses)
             return losses
 
+        # 如果是测试阶段,返回检测结果
         return result

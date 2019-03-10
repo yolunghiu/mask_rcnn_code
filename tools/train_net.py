@@ -27,9 +27,7 @@ from maskrcnn_benchmark.utils.miscellaneous import mkdir
 
 
 def train(cfg, local_rank, distributed):
-    # 该语句调用了 ./maskrcnn_benchmark/modeling/detector/ 中的 build_detection_model() 函数
-    # 该函数和 Detectron 中的类似, 都是用来创建目标检测模型的, 这也是创建模型的入口函数, 十分重要
-    # 这里我们只需要知道该函数会根据我们的配置文件返回一个网络模型就可以了
+    # 创建GeneralizedRCNN()对象
     model = build_detection_model(cfg)
     # print(model)
 
