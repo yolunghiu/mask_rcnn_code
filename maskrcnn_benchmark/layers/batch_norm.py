@@ -5,8 +5,11 @@ from torch import nn
 
 class FrozenBatchNorm2d(nn.Module):
     """
-    BatchNorm2d where the batch statistics and the affine parameters
-    are fixed
+    该类主要实现了 BN 层的功能, 只不过其中的参数都是固定的, 而非可更新的
+    具体原因是:
+        1. batch size非常小
+        2. 多GPU训练时, BN计算的statistics是单个GPU上的
+        https://github.com/facebookresearch/maskrcnn-benchmark/issues/267
     """
 
     def __init__(self, n):

@@ -28,6 +28,7 @@ class _NewEmptyTensorOp(torch.autograd.Function):
 
 class Conv2d(torch.nn.Conv2d):
     def forward(self, x):
+        # 当 x.numel()>0 时,与普通的 torch.nn.Conv2d() 函数没有区别
         if x.numel() > 0:
             return super(Conv2d, self).forward(x)
         # get output shape
@@ -73,7 +74,7 @@ class BatchNorm2d(torch.nn.BatchNorm2d):
 
 
 def interpolate(
-    input, size=None, scale_factor=None, mode="nearest", align_corners=None
+        input, size=None, scale_factor=None, mode="nearest", align_corners=None
 ):
     if input.numel() > 0:
         return torch.nn.functional.interpolate(
@@ -86,9 +87,9 @@ def interpolate(
         if size is not None and scale_factor is not None:
             raise ValueError("only one of size or scale_factor should be defined")
         if (
-            scale_factor is not None
-            and isinstance(scale_factor, tuple)
-            and len(scale_factor) != dim
+                scale_factor is not None
+                and isinstance(scale_factor, tuple)
+                and len(scale_factor) != dim
         ):
             raise ValueError(
                 "scale_factor shape must match input shape. "
