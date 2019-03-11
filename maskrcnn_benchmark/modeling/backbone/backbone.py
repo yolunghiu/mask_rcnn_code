@@ -29,7 +29,7 @@ def build_resnet_fpn_backbone(cfg):
 
     # 256, 指的是从stage2输入的特征图的通道数
     in_channels_stage2 = cfg.MODEL.RESNETS.RES2_OUT_CHANNELS
-    # 256*4, 这时stage4输出的特征图通道数
+    # 256, 在FPN的配置文件中被重新赋值了, 默认是256*4
     out_channels = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
 
     fpn = fpn_module.FPN(
@@ -40,8 +40,8 @@ def build_resnet_fpn_backbone(cfg):
             in_channels_stage2 * 8,
         ],
         out_channels=out_channels,
-        conv_block=conv_with_kaiming_uniform(
-            cfg.MODEL.FPN.USE_GN, cfg.MODEL.FPN.USE_RELU
+        conv_block=conv_with_kaiming_uniform(  # 这个函数返回的是一个函数对象 make_conv
+            cfg.MODEL.FPN.USE_GN, cfg.MODEL.FPN.USE_RELU  # 配置文件中默认都是False
         ),
         top_blocks=fpn_module.LastLevelMaxPool(),
     )
