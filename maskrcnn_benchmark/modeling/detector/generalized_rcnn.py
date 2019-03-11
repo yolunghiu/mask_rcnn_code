@@ -32,6 +32,7 @@ class GeneralizedRCNN(nn.Module):
     def __init__(self, cfg):
         super(GeneralizedRCNN, self).__init__()
 
+        # backbone.py 创建ResNet(resnet.py)或FPN(fpn.py)骨架结构用于特征提取
         self.backbone = build_backbone(cfg)
         self.rpn = build_rpn(cfg, self.backbone.out_channels)
         self.roi_heads = build_roi_heads(cfg, self.backbone.out_channels)

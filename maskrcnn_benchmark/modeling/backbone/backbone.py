@@ -16,7 +16,7 @@ from . import resnet
 def build_resnet_backbone(cfg):
     body = resnet.ResNet(cfg)
     model = nn.Sequential(OrderedDict([("body", body)]))
-    model.out_channels = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
+    model.out_channels = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS  # 256*4
     return model
 
 
@@ -24,9 +24,14 @@ def build_resnet_backbone(cfg):
 @registry.BACKBONES.register("R-101-FPN")
 @registry.BACKBONES.register("R-152-FPN")
 def build_resnet_fpn_backbone(cfg):
+    # 创建ResNet基本骨架
     body = resnet.ResNet(cfg)
+
+    # 256, 指的是从stage2输入的特征图的通道数
     in_channels_stage2 = cfg.MODEL.RESNETS.RES2_OUT_CHANNELS
+    # 256*4, 这时stage4输出的特征图通道数
     out_channels = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
+
     fpn = fpn_module.FPN(
         in_channels_list=[
             in_channels_stage2,
@@ -40,8 +45,11 @@ def build_resnet_fpn_backbone(cfg):
         ),
         top_blocks=fpn_module.LastLevelMaxPool(),
     )
+
+    # 将ResNet(body)和fpn进行组合
     model = nn.Sequential(OrderedDict([("body", body), ("fpn", fpn)]))
     model.out_channels = out_channels
+
     return model
 
 

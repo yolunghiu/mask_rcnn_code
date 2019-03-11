@@ -28,6 +28,7 @@ from maskrcnn_benchmark.utils.miscellaneous import mkdir
 
 def train(cfg, local_rank, distributed):
     # 创建GeneralizedRCNN()对象
+    # detectors.py --> generalized_rcnn.py
     model = build_detection_model(cfg)
     # print(model)
 
