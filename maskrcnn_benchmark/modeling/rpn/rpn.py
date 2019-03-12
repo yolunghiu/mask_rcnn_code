@@ -113,22 +113,29 @@ class RPNModule(torch.nn.Module):
     """
 
     def __init__(self, cfg, in_channels):
+        # in_channels 是 backbone 网络结构输出的特征图通道数
         super(RPNModule, self).__init__()
 
         self.cfg = cfg.clone()
 
+        # from .anchor_generator import make_anchor_generator
+        # 根据配置文件的信息输出对应的 anchor, 详细的实现逻辑需要查看 anchor_generator.py文件
         anchor_generator = make_anchor_generator(cfg)
 
+        # {'SingleConvRPNHead': RPNHead} 创建上面的 RPNHead 对象
         rpn_head = registry.RPN_HEADS[cfg.MODEL.RPN.RPN_HEAD]
         head = rpn_head(
             cfg, in_channels, anchor_generator.num_anchors_per_location()[0]
         )
 
+        # 其主要功能是将 bounding boxes 的表示形式编码成易于训练的形式(详细信息可查看R-CNN原文)
         rpn_box_coder = BoxCoder(weights=(1.0, 1.0, 1.0, 1.0))
 
+        # inference.py
         box_selector_train = make_rpn_postprocessor(cfg, rpn_box_coder, is_train=True)
         box_selector_test = make_rpn_postprocessor(cfg, rpn_box_coder, is_train=False)
 
+        # loss.py
         loss_evaluator = make_rpn_loss_evaluator(cfg, rpn_box_coder)
 
         self.anchor_generator = anchor_generator
@@ -161,7 +168,7 @@ class RPNModule(torch.nn.Module):
             return self._forward_test(anchors, objectness, rpn_box_regression)
 
     def _forward_train(self, anchors, objectness, rpn_box_regression, targets):
-        if self.cfg.MODEL.RPN_ONLY:
+        if self.cfg.MODEL.RPN_ONLY:  # 默认为 False
             # When training an RPN-only model, the loss is determined by the
             # predicted objectness and rpn_box_regression values and there is
             # no need to transform the anchors into predicted boxes; this is an

@@ -38,11 +38,11 @@ class AnchorGenerator(nn.Module):
     """
 
     def __init__(
-        self,
-        sizes=(128, 256, 512),
-        aspect_ratios=(0.5, 1.0, 2.0),
-        anchor_strides=(8, 16, 32),
-        straddle_thresh=0,
+            self,
+            sizes=(128, 256, 512),
+            aspect_ratios=(0.5, 1.0, 2.0),
+            anchor_strides=(8, 16, 32),
+            straddle_thresh=0,
     ):
         super(AnchorGenerator, self).__init__()
 
@@ -73,7 +73,7 @@ class AnchorGenerator(nn.Module):
     def grid_anchors(self, grid_sizes):
         anchors = []
         for size, stride, base_anchors in zip(
-            grid_sizes, self.strides, self.cell_anchors
+                grid_sizes, self.strides, self.cell_anchors
         ):
             grid_height, grid_width = size
             device = base_anchors.device
@@ -99,10 +99,10 @@ class AnchorGenerator(nn.Module):
         anchors = boxlist.bbox
         if self.straddle_thresh >= 0:
             inds_inside = (
-                (anchors[..., 0] >= -self.straddle_thresh)
-                & (anchors[..., 1] >= -self.straddle_thresh)
-                & (anchors[..., 2] < image_width + self.straddle_thresh)
-                & (anchors[..., 3] < image_height + self.straddle_thresh)
+                    (anchors[..., 0] >= -self.straddle_thresh)
+                    & (anchors[..., 1] >= -self.straddle_thresh)
+                    & (anchors[..., 2] < image_width + self.straddle_thresh)
+                    & (anchors[..., 3] < image_height + self.straddle_thresh)
             )
         else:
             device = anchors.device
@@ -126,20 +126,29 @@ class AnchorGenerator(nn.Module):
 
 
 def make_anchor_generator(config):
+    # (32, 64, 128, 256, 512)
     anchor_sizes = config.MODEL.RPN.ANCHOR_SIZES
+
+    # (0.5, 1.0, 2.0)
     aspect_ratios = config.MODEL.RPN.ASPECT_RATIOS
+
+    # 对于 ResNet-C4 是 16, 对于 FPN 是 (4, 8, 16, 32, 64)
     anchor_stride = config.MODEL.RPN.ANCHOR_STRIDE
+
+    # 对于超出图片的 anchor 如何处理, 这个值为 0 时直接移除此 anchor, -1 或 10000 代表裁剪 anchor
+    # Faster-RCNN 论文中在训练阶段直接移除跨边界的 anchor, 在测试阶段对跨边界的 anchor 进行裁剪
     straddle_thresh = config.MODEL.RPN.STRADDLE_THRESH
 
     if config.MODEL.RPN.USE_FPN:
-        assert len(anchor_stride) == len(
-            anchor_sizes
-        ), "FPN should have len(ANCHOR_STRIDE) == len(ANCHOR_SIZES)"
+        # FPN 中 P2~P6 依次使用不同的 stride, 每层特征图上只有一种 size 的 anchor
+        assert len(anchor_stride) == len(anchor_sizes), \
+            "FPN should have len(ANCHOR_STRIDE) == len(ANCHOR_SIZES)"
     else:
+        # Faster RCNN 中只用了一个 stage 输出的特征图, 在这个特征图上设置不同 size 的 anchors
         assert len(anchor_stride) == 1, "Non-FPN should have a single ANCHOR_STRIDE"
-    anchor_generator = AnchorGenerator(
-        anchor_sizes, aspect_ratios, anchor_stride, straddle_thresh
-    )
+
+    anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios, anchor_stride, straddle_thresh)
+
     return anchor_generator
 
 
@@ -164,29 +173,6 @@ def make_anchor_generator_retinanet(config):
         tuple(new_anchor_sizes), aspect_ratios, anchor_strides, straddle_thresh
     )
     return anchor_generator
-
-# Copyright (c) 2017-present, Facebook, Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-##############################################################################
-#
-# Based on:
-# --------------------------------------------------------
-# Faster R-CNN
-# Copyright (c) 2015 Microsoft
-# Licensed under The MIT License [see LICENSE for details]
-# Written by Ross Girshick and Sean Bell
-# --------------------------------------------------------
 
 
 # Verify that we compute the same anchors as Shaoqing's matlab implementation:
@@ -218,7 +204,7 @@ def make_anchor_generator_retinanet(config):
 
 
 def generate_anchors(
-    stride=16, sizes=(32, 64, 128, 256, 512), aspect_ratios=(0.5, 1, 2)
+        stride=16, sizes=(32, 64, 128, 256, 512), aspect_ratios=(0.5, 1, 2)
 ):
     """Generates a matrix of anchor boxes in (x1, y1, x2, y2) format. Anchors
     are centered on stride / 2, have (approximate) sqrt areas of the specified
