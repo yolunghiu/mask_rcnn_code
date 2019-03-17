@@ -34,7 +34,7 @@ class GeneralizedRCNN(nn.Module):
 
         # backbone.py 创建ResNet(resnet.py)或FPN(fpn.py)骨架结构用于特征提取
         self.backbone = build_backbone(cfg)
-        # rpn.py
+        # rpn.py 构建 region proposal network
         self.rpn = build_rpn(cfg, self.backbone.out_channels)
         self.roi_heads = build_roi_heads(cfg, self.backbone.out_channels)
 

@@ -10,7 +10,7 @@ from maskrcnn_benchmark.structures.bounding_box import BoxList
 
 class BufferList(nn.Module):
     """
-    Similar to nn.ParameterList, but for buffers
+    把创建对象时传进来的 buffers 添加到 self._buffers 中, 键是该 buffer 在 Module 中的序号
     """
 
     def __init__(self, buffers=None):
@@ -25,9 +25,11 @@ class BufferList(nn.Module):
         return self
 
     def __len__(self):
+        # self._buffer 是一个 OrderedDict
         return len(self._buffers)
 
     def __iter__(self):
+        # self._buffers.values() 返回字典(键值对)中所有的值
         return iter(self._buffers.values())
 
 
@@ -46,12 +48,13 @@ class AnchorGenerator(nn.Module):
     ):
         super(AnchorGenerator, self).__init__()
 
-        if len(anchor_strides) == 1:
+        # 生成每个 stage 的特征图上第一个 ceil 上的所有 anchors
+        if len(anchor_strides) == 1:  # faster rcnn
             anchor_stride = anchor_strides[0]
             cell_anchors = [
                 generate_anchors(anchor_stride, sizes, aspect_ratios).float()
             ]
-        else:
+        else:  # fpn
             if len(anchor_strides) != len(sizes):
                 raise RuntimeError("FPN should have #anchor_strides == #sizes")
 
@@ -63,11 +66,16 @@ class AnchorGenerator(nn.Module):
                 ).float()
                 for anchor_stride, size in zip(anchor_strides, sizes)
             ]
+
+        # 各个 stage 的特征图对应的 stride
         self.strides = anchor_strides
+        # 各个 stage 的特征图对应的 anchors
         self.cell_anchors = BufferList(cell_anchors)
+        # 对于超出图片的 anchor, 这个值为 0 时直接移除此 anchor, -1 或 10000 则裁剪 anchor
         self.straddle_thresh = straddle_thresh
 
     def num_anchors_per_location(self):
+        # 返回每个 stage 的特征图上的每个 ceil 上有几个 anchor
         return [len(cell_anchors) for cell_anchors in self.cell_anchors]
 
     def grid_anchors(self, grid_sizes):
@@ -125,6 +133,7 @@ class AnchorGenerator(nn.Module):
         return anchors
 
 
+# faster rcnn 与 fpn 中生成 AnchorGenerator 对象
 def make_anchor_generator(config):
     # (32, 64, 128, 256, 512)
     anchor_sizes = config.MODEL.RPN.ANCHOR_SIZES
@@ -152,6 +161,7 @@ def make_anchor_generator(config):
     return anchor_generator
 
 
+# 用与 retinanet
 def make_anchor_generator_retinanet(config):
     anchor_sizes = config.MODEL.RETINANET.ANCHOR_SIZES
     aspect_ratios = config.MODEL.RETINANET.ASPECT_RATIOS
@@ -202,6 +212,9 @@ def make_anchor_generator_retinanet(config):
 #        [ -79., -167.,   96.,  184.],
 #        [-167., -343.,  184.,  360.]])
 
+# 上面生成了 9 个 anchor, 应该是使用了 3 中 scales 和 3 中 ars, 这 9 个 anchors 应该都是
+# 特征图上第一个点上的 anchor, 只要这个位置的 anchor 坐标确定了, 其他位置的 anchor 就能根据 stride 算出来
+
 
 def generate_anchors(
         stride=16, sizes=(32, 64, 128, 256, 512), aspect_ratios=(0.5, 1, 2)
@@ -221,27 +234,31 @@ def _generate_anchors(base_size, scales, aspect_ratios):
     """Generate anchor (reference) windows by enumerating aspect ratios X
     scales wrt a reference (0, 0, base_size - 1, base_size - 1) window.
     """
+    # base anchor
     anchor = np.array([1, 1, base_size, base_size], dtype=np.float) - 1
+
+    # 基于 base anchor 生成的 中心点坐标以及面积相同 但是 高宽比 不同的 anchors
     anchors = _ratio_enum(anchor, aspect_ratios)
+
     anchors = np.vstack(
+        # [[x1, y1, x2, y2], [x1, y1, x2, y2], ...]
         [_scale_enum(anchors[i, :], scales) for i in range(anchors.shape[0])]
     )
+
     return torch.from_numpy(anchors)
 
 
 def _whctrs(anchor):
-    """Return width, height, x center, and y center for an anchor (window)."""
-    w = anchor[2] - anchor[0] + 1
-    h = anchor[3] - anchor[1] + 1
+    """传入 anchor 的两个坐标, 返回这个 anchor 的 宽,高,中心点横坐标,中心点纵坐标"""
+    w = anchor[2] - anchor[0] + 1  # x2 - x1 + 1
+    h = anchor[3] - anchor[1] + 1  # y2 - y1 + 1
     x_ctr = anchor[0] + 0.5 * (w - 1)
     y_ctr = anchor[1] + 0.5 * (h - 1)
     return w, h, x_ctr, y_ctr
 
 
 def _mkanchors(ws, hs, x_ctr, y_ctr):
-    """Given a vector of widths (ws) and heights (hs) around a center
-    (x_ctr, y_ctr), output a set of anchors (windows).
-    """
+    """将 (w,h,x_ctr,y_ctr) 的 anchor 转换成 (x1,y1,x2,y2) 的形式"""
     ws = ws[:, np.newaxis]
     hs = hs[:, np.newaxis]
     anchors = np.hstack(
@@ -256,20 +273,44 @@ def _mkanchors(ws, hs, x_ctr, y_ctr):
 
 
 def _ratio_enum(anchor, ratios):
-    """Enumerate a set of anchors for each aspect ratio wrt an anchor."""
+    """根据给定的 anchor 以及相对这个 anchor 的高宽比, 计算出面积相同但高宽比不同的多个 anchors"""
+    # 计算 base_anchor 的相关信息
     w, h, x_ctr, y_ctr = _whctrs(anchor)
+
+    # base_anchor 的面积
     size = w * h
+
+    # 根据高宽比获取 size_ratios 变量, 后续会用该变量对 box 的高宽比进行转化
     size_ratios = size / ratios
+
+    # ws = sqrt(size) / sqrt(ratios)
+    # hs = sqrt(size) * sqrt(ratios)
+    # 高宽比 = hs/ws = sqrt(ratios) * sqrt(ratios) = ratios
+    # round 代表四舍五入, 默认只保留整数部分
     ws = np.round(np.sqrt(size_ratios))
     hs = np.round(ws * ratios)
+
+    # 根据新的 w 和 h, 生成新的 box 坐标(x1, x2, y1, y2) 并将其返回
     anchors = _mkanchors(ws, hs, x_ctr, y_ctr)
+
     return anchors
 
 
 def _scale_enum(anchor, scales):
-    """Enumerate a set of anchors for each scale wrt an anchor."""
+    """将给定的 anchor 按照 scales 进行缩放"""
+    # 获取 anchor 的宽, 高, 以及中心坐标
     w, h, x_ctr, y_ctr = _whctrs(anchor)
+
+    # 将宽和高各放大 scales 倍
+    # 这里的倍数是每个特征图上设置的 anchor_size 除以该特征图对应 stride 的结果
     ws = w * scales
     hs = h * scales
+
     anchors = _mkanchors(ws, hs, x_ctr, y_ctr)
+
     return anchors
+
+
+if __name__ == '__main__':
+    anchors = generate_anchors()
+    print(anchors)
