@@ -69,7 +69,7 @@ class AnchorGenerator(nn.Module):
 
         # 各个 stage 的特征图对应的 stride
         self.strides = anchor_strides
-        # 各个 stage 的特征图对应的 anchors
+        # 各个 stage 的特征图对应的第一个ceil上所有的 anchors [x1, y1, x2, y2]
         self.cell_anchors = BufferList(cell_anchors)
         # 对于超出图片的 anchor, 这个值为 0 时直接移除此 anchor, -1 或 10000 则裁剪 anchor
         self.straddle_thresh = straddle_thresh
@@ -79,23 +79,40 @@ class AnchorGenerator(nn.Module):
         return [len(cell_anchors) for cell_anchors in self.cell_anchors]
 
     def grid_anchors(self, grid_sizes):
+        """
+        self.cell_anchors 中保存的是每个特征图上第一个 ceil 中的 base_anchors
+        这个函数通过 base_anchors 和相关参数计算出特征图上的所有 anchors
+
+        grid_sizes: 各种大小的用于特征提取的特征图的宽高, [(H1, W1), (H2, W2), ...]
+        """
         anchors = []
         for size, stride, base_anchors in zip(
                 grid_sizes, self.strides, self.cell_anchors
         ):
+            # 特征图的高,宽
             grid_height, grid_width = size
             device = base_anchors.device
+
+            # grid_width * stride = image_width
             shifts_x = torch.arange(
                 0, grid_width * stride, step=stride, dtype=torch.float32, device=device
             )
+            # grid_height * stride = image_height
             shifts_y = torch.arange(
                 0, grid_height * stride, step=stride, dtype=torch.float32, device=device
             )
             shift_y, shift_x = torch.meshgrid(shifts_y, shifts_x)
             shift_x = shift_x.reshape(-1)
             shift_y = shift_y.reshape(-1)
+
+            # 若特征图上有 n 个 ceil, 则 shifts 为 [n, 4] 的矩阵
+            # 矩阵中每一行都代表当前 ceil 对应到原图上的左上角坐标
+            # 左上角坐标重复了两次, 这四个值加上 anchor 的四个坐标之后就是 这个 ceil 上的 anchor
+            # 在原图上的坐标
             shifts = torch.stack((shift_x, shift_y, shift_x, shift_y), dim=1)
 
+            # 广播机制, (n, 1, 4) + (1, m, 4) --> (n, m, 4)
+            # 共有 n 个 ceil, 每个 ceil 上设置 m 个 anchor
             anchors.append(
                 (shifts.view(-1, 1, 4) + base_anchors.view(1, -1, 4)).reshape(-1, 4)
             )
@@ -103,33 +120,54 @@ class AnchorGenerator(nn.Module):
         return anchors
 
     def add_visibility_to(self, boxlist):
+        """
+        对所有 anchors 进行筛选,将保留下来的 anchors 的索引值保存到 'visibility' 属性中
+        筛选依据是是否保留超出边界的 anchors
+        :param boxlist: 一张图片上的所有 anchors
+        """
+
         image_width, image_height = boxlist.size
         anchors = boxlist.bbox
         if self.straddle_thresh >= 0:
+            # 参数值为0时,代表移除超出边界的anchors
             inds_inside = (
+                # 第一个坐标 >= 0
                     (anchors[..., 0] >= -self.straddle_thresh)
+                    # 第二个坐标 >= 0
                     & (anchors[..., 1] >= -self.straddle_thresh)
+                    # 第三个坐标 < image_width(+0)
                     & (anchors[..., 2] < image_width + self.straddle_thresh)
+                    # 第四个坐标 < image_height(+0)
                     & (anchors[..., 3] < image_height + self.straddle_thresh)
             )
-        else:
+        else:  # 参数值为-1时,代表裁剪超出边界的anchors,这时所有anchors都会保留
             device = anchors.device
             inds_inside = torch.ones(anchors.shape[0], dtype=torch.uint8, device=device)
         boxlist.add_field("visibility", inds_inside)
 
     def forward(self, image_list, feature_maps):
+        # [(H, W), (H, W), ...] 所有特征图的宽高
         grid_sizes = [feature_map.shape[-2:] for feature_map in feature_maps]
+
+        # 所有特征图上的所有 anchors
         anchors_over_all_feature_maps = self.grid_anchors(grid_sizes)
+
+        # 存储所有图片上的 anchors
         anchors = []
         for i, (image_height, image_width) in enumerate(image_list.image_sizes):
+            # 当前图片上的 anchors
             anchors_in_image = []
+
             for anchors_per_feature_map in anchors_over_all_feature_maps:
+                # BoxList 工具类在 ABSTRACTIONS.md 中有介绍
                 boxlist = BoxList(
                     anchors_per_feature_map, (image_width, image_height), mode="xyxy"
                 )
                 self.add_visibility_to(boxlist)
                 anchors_in_image.append(boxlist)
+
             anchors.append(anchors_in_image)
+
         return anchors
 
 
@@ -144,7 +182,7 @@ def make_anchor_generator(config):
     # 对于 ResNet-C4 是 16, 对于 FPN 是 (4, 8, 16, 32, 64)
     anchor_stride = config.MODEL.RPN.ANCHOR_STRIDE
 
-    # 对于超出图片的 anchor 如何处理, 这个值为 0 时直接移除此 anchor, -1 或 10000 代表裁剪 anchor
+    # 对于超出图片的 anchor 如何处理, 这个值为 0 时直接移除此 anchor, -1 代表裁剪 anchor
     # Faster-RCNN 论文中在训练阶段直接移除跨边界的 anchor, 在测试阶段对跨边界的 anchor 进行裁剪
     straddle_thresh = config.MODEL.RPN.STRADDLE_THRESH
 
@@ -161,7 +199,7 @@ def make_anchor_generator(config):
     return anchor_generator
 
 
-# 用与 retinanet
+# 用于 retinanet
 def make_anchor_generator_retinanet(config):
     anchor_sizes = config.MODEL.RETINANET.ANCHOR_SIZES
     aspect_ratios = config.MODEL.RETINANET.ASPECT_RATIOS
@@ -212,7 +250,7 @@ def make_anchor_generator_retinanet(config):
 #        [ -79., -167.,   96.,  184.],
 #        [-167., -343.,  184.,  360.]])
 
-# 上面生成了 9 个 anchor, 应该是使用了 3 中 scales 和 3 中 ars, 这 9 个 anchors 应该都是
+# 上面生成了 9 个 anchor, 使用了 3 种 scales 和 3 种 ars, 这 9 个 anchors 都是
 # 特征图上第一个点上的 anchor, 只要这个位置的 anchor 坐标确定了, 其他位置的 anchor 就能根据 stride 算出来
 
 
@@ -234,10 +272,10 @@ def _generate_anchors(base_size, scales, aspect_ratios):
     """Generate anchor (reference) windows by enumerating aspect ratios X
     scales wrt a reference (0, 0, base_size - 1, base_size - 1) window.
     """
-    # base anchor
+    # base_anchor, 这四个坐标值都是相对于原图尺寸的
     anchor = np.array([1, 1, base_size, base_size], dtype=np.float) - 1
 
-    # 基于 base anchor 生成的 中心点坐标以及面积相同 但是 高宽比 不同的 anchors
+    # 基于 base_anchor 生成的 中心点坐标以及面积相同 但是 高宽比 不同的 anchors
     anchors = _ratio_enum(anchor, aspect_ratios)
 
     anchors = np.vstack(
