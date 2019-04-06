@@ -122,8 +122,8 @@ class AnchorGenerator(nn.Module):
     def add_visibility_to(self, boxlist):
         """
         对所有 anchors 进行筛选,将保留下来的 anchors 的索引值保存到 'visibility' 属性中
-        筛选依据是是否保留超出边界的 anchors
         :param boxlist: 一张图片上的所有 anchors
+        筛选依据是是否保留超出边界的 anchors
         """
 
         image_width, image_height = boxlist.size
@@ -131,7 +131,7 @@ class AnchorGenerator(nn.Module):
         if self.straddle_thresh >= 0:
             # 参数值为0时,代表移除超出边界的anchors
             inds_inside = (
-                # 第一个坐标 >= 0
+                    # 第一个坐标 >= 0
                     (anchors[..., 0] >= -self.straddle_thresh)
                     # 第二个坐标 >= 0
                     & (anchors[..., 1] >= -self.straddle_thresh)

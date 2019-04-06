@@ -143,11 +143,12 @@ def main():
 
     args = parser.parse_args()
 
-    # 获取 gpu 的数量, 我电脑只有一个GPU, 故 num_gpus = 1
+    # 获取 gpu 的数量
     num_gpus = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
 
     # 是否进行多GPU的分布式训练
     args.distributed = num_gpus > 1
+    # args.distributed = 0
 
     # 设置分布式训练时的一些初始化信息
     if args.distributed:

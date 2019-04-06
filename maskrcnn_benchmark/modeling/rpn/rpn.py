@@ -70,6 +70,9 @@ class RPNHeadFeatureSingleConv(nn.Module):
         return x
 
 
+# registry 指的是 maskrcnn_benchmark/modeling/registry.py 这个文件
+# registry.RPN_HEADS 是文件中定义的一个 Registry 对象
+# 这个装饰器的注解代码会在加载文件时被执行
 @registry.RPN_HEADS.register("SingleConvRPNHead")
 class RPNHead(nn.Module):
     """
@@ -118,11 +121,12 @@ class RPNModule(torch.nn.Module):
 
         self.cfg = cfg.clone()
 
-        # from .anchor_generator import make_anchor_generator
-        # 根据配置文件的信息输出对应的 anchor, 详细的实现逻辑需要查看 anchor_generator.py文件
+        # 创建 anchor_generator.py 中的 AnchorGenerator 对象
         anchor_generator = make_anchor_generator(cfg)
 
-        # {'SingleConvRPNHead': RPNHead} 创建上面的 RPNHead 对象
+        # cfg.MODEL.RPN.RPN_HEAD: "SingleConvRPNHead"
+        # 这是 RPNHead 对象在 registry.RPN_HEADS 中注册的名字, 它的值就是 RPNHead 对象
+        # Python 中函数名和类名都是对象
         rpn_head = registry.RPN_HEADS[cfg.MODEL.RPN.RPN_HEAD]
         head = rpn_head(
             cfg, in_channels, anchor_generator.num_anchors_per_location()[0]

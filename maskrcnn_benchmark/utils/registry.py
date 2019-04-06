@@ -8,6 +8,7 @@ def _register_generic(module_dict, module_name, module):
 
 class Registry(dict):
     '''
+    继承了 dict
     A helper class for managing registering modules, it extends a dictionary
     and provides a register functions.
 

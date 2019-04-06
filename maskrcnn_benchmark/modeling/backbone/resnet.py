@@ -98,7 +98,7 @@ class ResNet(nn.Module):
         # ↓获取相应的信息来构建 resnet 的其他 stages 的卷积层↓
 
         # 当 num_groups=1 时为 ResNet, >1 时为 ResNeXt
-        num_groups = cfg.MODEL.RESNETS.NUM_GROUP  # 默认为1
+        num_groups = cfg.MODEL.RESNETS.NUM_GROUPS  # 默认为1
         width_per_group = cfg.MODEL.RESNETS.WIDTH_PER_GROUP  # 默认为64
 
         # in_channels 指的是 stem 的输出通道数, ResNet 论文中多种配置的网络都是64
