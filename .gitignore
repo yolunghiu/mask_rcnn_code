@@ -33,3 +33,5 @@ INSTALL.md
 docker
 MODEL_ZOO.md
 *.odt#
+
+.vscode

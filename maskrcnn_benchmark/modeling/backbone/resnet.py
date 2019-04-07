@@ -27,20 +27,20 @@ from maskrcnn_benchmark.layers import Conv2d
 from maskrcnn_benchmark.modeling.make_layers import group_norm
 from maskrcnn_benchmark.utils.registry import Registry
 
-# ResNet stage specification
+# ResNet 每个 stage 相关参数存储所用的数据结构
 StageSpec = namedtuple(
     "StageSpec",
     [
-        "index",  # Index of the stage, eg 1, 2, ..,. 5
-        "block_count",  # Numer of residual blocks in the stage
-        "return_features",  # True => return the last feature map from this stage
+        "index",  # 当前 stage 索引值
+        "block_count",  # 当前 stage 中残差块的数量
+        "return_features",  # 布尔值, 代表当前 stage 最后一个残差块输出的特征图是否要返回
     ],
 )
 
 # -----------------------------------------------------------------------------
 # Standard ResNet models
-# 只用ResNet不用FPN时,只有最后一个stage输出的特征图被用于下一步处理
-# 使用FPN时,多个stage输出的特征图组成特征金字塔,用于物体检测
+# 只用 ResNet 不用 FPN 时,只有最后一个 stage 输出的特征图被用于下一步处理
+# 使用 FPN 时,多个 stage 输出的特征图组成特征金字塔,用于物体检测
 # -----------------------------------------------------------------------------
 # ResNet-50 (including all stages)
 ResNet50StagesTo5 = tuple(

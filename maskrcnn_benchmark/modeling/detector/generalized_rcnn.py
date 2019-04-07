@@ -23,7 +23,6 @@ class GeneralizedRCNN(nn.Module):
         detections / masks from it.
     """
 
-    # 该类是 MaskrcnnBenchmark 中所有模型的共同抽象, 目前支持 boxes 和 masks 两种形式的标签
     # 该类主要包含以下三个部分:
     # - backbone
     # - rpn(option)
@@ -32,10 +31,13 @@ class GeneralizedRCNN(nn.Module):
     def __init__(self, cfg):
         super(GeneralizedRCNN, self).__init__()
 
-        # backbone.py 创建ResNet(resnet.py)或FPN(fpn.py)骨架结构用于特征提取
+        # backbone.py 创建 ResNet(resnet.py) 或 FPN(fpn.py) 骨架结构用于特征提取
         self.backbone = build_backbone(cfg)
+
         # rpn.py 构建 region proposal network
+        # out_channels 在 ResNet 中为 256*4, 在 FPN 中为 256
         self.rpn = build_rpn(cfg, self.backbone.out_channels)
+        
         self.roi_heads = build_roi_heads(cfg, self.backbone.out_channels)
 
     def forward(self, images, targets=None):
@@ -56,8 +58,10 @@ class GeneralizedRCNN(nn.Module):
 
         # 自定义的数据结构,将不同尺寸的图片填充成相同尺寸并保存原始尺寸信息
         images = to_image_list(images)
+
         # 利用 backbone 网络获取图片的 features
         features = self.backbone(images.tensors)
+
         # 利用 rpn 网络获取 proposals 和相应的 loss
         proposals, proposal_losses = self.rpn(images, features, targets)
 

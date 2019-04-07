@@ -11,6 +11,7 @@ from maskrcnn_benchmark.structures.bounding_box import BoxList
 class BufferList(nn.Module):
     """
     把创建对象时传进来的 buffers 添加到 self._buffers 中, 键是该 buffer 在 Module 中的序号
+    AnchorGenerator 中的 cell_anchors 就是 BufferList 对象
     """
 
     def __init__(self, buffers=None):
@@ -35,13 +36,13 @@ class BufferList(nn.Module):
 
 class AnchorGenerator(nn.Module):
     """
-    For a set of image sizes and feature maps, computes a set
-    of anchors
+    make_anchor_generator()函数中的调用方式:
+        AnchorGenerator(anchor_sizes, aspect_ratios, anchor_stride, straddle_thresh)
     """
 
     def __init__(
             self,
-            sizes=(128, 256, 512),
+            anchor_sizes=(128, 256, 512),
             aspect_ratios=(0.5, 1.0, 2.0),
             anchor_strides=(8, 16, 32),
             straddle_thresh=0,
@@ -52,25 +53,30 @@ class AnchorGenerator(nn.Module):
         if len(anchor_strides) == 1:  # faster rcnn
             anchor_stride = anchor_strides[0]
             cell_anchors = [
-                generate_anchors(anchor_stride, sizes, aspect_ratios).float()
+                generate_anchors(anchor_stride, anchor_sizes,
+                                 aspect_ratios).float()
             ]
         else:  # fpn
-            if len(anchor_strides) != len(sizes):
+            if len(anchor_strides) != len(anchor_sizes):
                 raise RuntimeError("FPN should have #anchor_strides == #sizes")
 
+            # 为每个 stage 的特征图分别生成 anchors
             cell_anchors = [
                 generate_anchors(
                     anchor_stride,
                     size if isinstance(size, (tuple, list)) else (size,),
                     aspect_ratios
                 ).float()
-                for anchor_stride, size in zip(anchor_strides, sizes)
+                for anchor_stride, size in zip(anchor_strides, anchor_sizes)
             ]
 
         # 各个 stage 的特征图对应的 stride
         self.strides = anchor_strides
+
         # 各个 stage 的特征图对应的第一个ceil上所有的 anchors [x1, y1, x2, y2]
+        # 将 list 类型转换成 BufferList 对象
         self.cell_anchors = BufferList(cell_anchors)
+
         # 对于超出图片的 anchor, 这个值为 0 时直接移除此 anchor, -1 或 10000 则裁剪 anchor
         self.straddle_thresh = straddle_thresh
 
@@ -86,6 +92,8 @@ class AnchorGenerator(nn.Module):
         grid_sizes: 各种大小的用于特征提取的特征图的宽高, [(H1, W1), (H2, W2), ...]
         """
         anchors = []
+
+        # 特征图的尺寸, 特征图的 stride, 特征图上第一个 ceil 处的所有 base_anchors
         for size, stride, base_anchors in zip(
                 grid_sizes, self.strides, self.cell_anchors
         ):
@@ -107,7 +115,7 @@ class AnchorGenerator(nn.Module):
 
             # 若特征图上有 n 个 ceil, 则 shifts 为 [n, 4] 的矩阵
             # 矩阵中每一行都代表当前 ceil 对应到原图上的左上角坐标
-            # 左上角坐标重复了两次, 这四个值加上 anchor 的四个坐标之后就是 这个 ceil 上的 anchor
+            # 左上角坐标重复了两次, 这四个值加上 anchor 的四个坐标之后就是这个 ceil 上的 anchor
             # 在原图上的坐标
             shifts = torch.stack((shift_x, shift_y, shift_x, shift_y), dim=1)
 
@@ -122,7 +130,7 @@ class AnchorGenerator(nn.Module):
     def add_visibility_to(self, boxlist):
         """
         对所有 anchors 进行筛选,将保留下来的 anchors 的索引值保存到 'visibility' 属性中
-        :param boxlist: 一张图片上的所有 anchors
+        boxlist: 一个 stage 的特征图上的所有 anchors
         筛选依据是是否保留超出边界的 anchors
         """
 
@@ -131,7 +139,7 @@ class AnchorGenerator(nn.Module):
         if self.straddle_thresh >= 0:
             # 参数值为0时,代表移除超出边界的anchors
             inds_inside = (
-                    # 第一个坐标 >= 0
+                # 第一个坐标 >= 0
                     (anchors[..., 0] >= -self.straddle_thresh)
                     # 第二个坐标 >= 0
                     & (anchors[..., 1] >= -self.straddle_thresh)
@@ -142,14 +150,16 @@ class AnchorGenerator(nn.Module):
             )
         else:  # 参数值为-1时,代表裁剪超出边界的anchors,这时所有anchors都会保留
             device = anchors.device
-            inds_inside = torch.ones(anchors.shape[0], dtype=torch.uint8, device=device)
+            inds_inside = torch.ones(
+                anchors.shape[0], dtype=torch.uint8, device=device)
         boxlist.add_field("visibility", inds_inside)
 
     def forward(self, image_list, feature_maps):
         # [(H, W), (H, W), ...] 所有特征图的宽高
         grid_sizes = [feature_map.shape[-2:] for feature_map in feature_maps]
 
-        # 所有特征图上的所有 anchors
+        # 所有特征图上的所有 anchors, 只和网络中输入图片的尺寸有关
+        # 每张图片上设置的 anchors 都是一样的
         anchors_over_all_feature_maps = self.grid_anchors(grid_sizes)
 
         # 存储所有图片上的 anchors
@@ -159,21 +169,30 @@ class AnchorGenerator(nn.Module):
             anchors_in_image = []
 
             for anchors_per_feature_map in anchors_over_all_feature_maps:
-                # BoxList 工具类在 ABSTRACTIONS.md 中有介绍
+                # 依次处理每个 stage 的特征图
+
+                # 将当前特征图上的所有 anchors 和图片信息保存成 BoxList 对象
                 boxlist = BoxList(
-                    anchors_per_feature_map, (image_width, image_height), mode="xyxy"
+                    anchors_per_feature_map,
+                    (image_width, image_height),
+                    mode="xyxy"
                 )
+                # 在 boxlist 中添加个 'visibility' 属性, 属性值为所有要保留的 anchors 的索引
+                # straddle_thresh=0 时, 要移除超出边界的 anchors
                 self.add_visibility_to(boxlist)
+
                 anchors_in_image.append(boxlist)
 
             anchors.append(anchors_in_image)
 
+        # [[boxlist, boxlist, ...], [boxlist, boxlist, ...], ...]
+        # anchors.shape: (batch_size, number_stage)
         return anchors
 
 
 # faster rcnn 与 fpn 中生成 AnchorGenerator 对象
 def make_anchor_generator(config):
-    # (32, 64, 128, 256, 512)
+    # (32, 64, 128, 256, 512) 分别对应于五个 stage 的特征图
     anchor_sizes = config.MODEL.RPN.ANCHOR_SIZES
 
     # (0.5, 1.0, 2.0)
@@ -184,6 +203,7 @@ def make_anchor_generator(config):
 
     # 对于超出图片的 anchor 如何处理, 这个值为 0 时直接移除此 anchor, -1 代表裁剪 anchor
     # Faster-RCNN 论文中在训练阶段直接移除跨边界的 anchor, 在测试阶段对跨边界的 anchor 进行裁剪
+    # 配置文件中默认为 0
     straddle_thresh = config.MODEL.RPN.STRADDLE_THRESH
 
     if config.MODEL.RPN.USE_FPN:
@@ -192,9 +212,11 @@ def make_anchor_generator(config):
             "FPN should have len(ANCHOR_STRIDE) == len(ANCHOR_SIZES)"
     else:
         # Faster RCNN 中只用了一个 stage 输出的特征图, 在这个特征图上设置不同 size 的 anchors
-        assert len(anchor_stride) == 1, "Non-FPN should have a single ANCHOR_STRIDE"
+        assert len(
+            anchor_stride) == 1, "Non-FPN should have a single ANCHOR_STRIDE"
 
-    anchor_generator = AnchorGenerator(anchor_sizes, aspect_ratios, anchor_stride, straddle_thresh)
+    anchor_generator = AnchorGenerator(
+        anchor_sizes, aspect_ratios, anchor_stride, straddle_thresh)
 
     return anchor_generator
 
@@ -213,7 +235,8 @@ def make_anchor_generator_retinanet(config):
     for size in anchor_sizes:
         per_layer_anchor_sizes = []
         for scale_per_octave in range(scales_per_octave):
-            octave_scale = octave ** (scale_per_octave / float(scales_per_octave))
+            octave_scale = octave ** (scale_per_octave /
+                                      float(scales_per_octave))
             per_layer_anchor_sizes.append(octave_scale * size)
         new_anchor_sizes.append(tuple(per_layer_anchor_sizes))
 
@@ -250,16 +273,18 @@ def make_anchor_generator_retinanet(config):
 #        [ -79., -167.,   96.,  184.],
 #        [-167., -343.,  184.,  360.]])
 
-# 上面生成了 9 个 anchor, 使用了 3 种 scales 和 3 种 ars, 这 9 个 anchors 都是
+# 上面生成了 9 个 anchor, 使用了 3 种 scales 和 3 种 aspect_ratios, 这 9 个 anchors 都是
 # 特征图上第一个点上的 anchor, 只要这个位置的 anchor 坐标确定了, 其他位置的 anchor 就能根据 stride 算出来
 
 
 def generate_anchors(
         stride=16, sizes=(32, 64, 128, 256, 512), aspect_ratios=(0.5, 1, 2)
 ):
-    """Generates a matrix of anchor boxes in (x1, y1, x2, y2) format. Anchors
-    are centered on stride / 2, have (approximate) sqrt areas of the specified
-    sizes, and aspect ratios as given.
+    """
+    为一种尺度的特征图生成 anchors (若需要生成多个 stage 的anchors, 则需多次调用这个函数)
+    生成的 anchors 格式为 (x1, y1, x2, y2), anchors 的中心位于 stride/2 的位置,
+    这里生成的是特征图上第一个 ceil 上的 anchors, 单位长度的 ceil 对应到原图后尺寸为 stride.
+    每个 anchor 面积大约为 size平方
     """
     return _generate_anchors(
         stride,
@@ -269,9 +294,15 @@ def generate_anchors(
 
 
 def _generate_anchors(base_size, scales, aspect_ratios):
-    """Generate anchor (reference) windows by enumerating aspect ratios X
-    scales wrt a reference (0, 0, base_size - 1, base_size - 1) window.
     """
+    reference: (0, 0, base_size - 1, base_size - 1)
+    根据 reference 来生成所有规格的 anchors
+
+    base_size: 当前特征图相对于原图降采样了多少倍 stride
+    scales: size/stride, 要生成的 anchors 映射到特征图上的大小
+    aspect_ratios: 高宽比
+    """
+
     # base_anchor, 这四个坐标值都是相对于原图尺寸的
     anchor = np.array([1, 1, base_size, base_size], dtype=np.float) - 1
 

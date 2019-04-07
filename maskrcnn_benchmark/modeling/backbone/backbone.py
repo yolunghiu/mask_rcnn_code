@@ -9,6 +9,7 @@ from . import fpn as fpn_module
 from . import resnet
 
 
+# ResNet 骨架
 @registry.BACKBONES.register(module_name="R-50-C4")
 @registry.BACKBONES.register("R-50-C5")
 @registry.BACKBONES.register("R-101-C4")
@@ -20,16 +21,18 @@ def build_resnet_backbone(cfg):
     return model
 
 
+# 基于 ResNet 的 FPN 骨架
 @registry.BACKBONES.register("R-50-FPN")
 @registry.BACKBONES.register("R-101-FPN")
 @registry.BACKBONES.register("R-152-FPN")
 def build_resnet_fpn_backbone(cfg):
-    # 创建ResNet基本骨架
+    # 创建 ResNet 基本骨架
     body = resnet.ResNet(cfg)
 
-    # 256, 指的是从stage2输入的特征图的通道数
+    # 256, 指的是从 stage2 输入的特征图的通道数
     in_channels_stage2 = cfg.MODEL.RESNETS.RES2_OUT_CHANNELS
-    # 256, 在FPN的配置文件中被重新赋值了, 默认是256*4
+
+    # 256, 在 FPN 的配置文件中被重新赋值了, 默认是256*4
     out_channels = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
 
     fpn = fpn_module.FPN(
@@ -48,11 +51,12 @@ def build_resnet_fpn_backbone(cfg):
 
     # 将ResNet(body)和fpn进行组合
     model = nn.Sequential(OrderedDict([("body", body), ("fpn", fpn)]))
-    model.out_channels = out_channels
+    model.out_channels = out_channels  # FPN 中用到的各个 stage 的特征图通道数都是 256
 
     return model
 
 
+# 基于 FPN 的 RetinaNet 骨架
 @registry.BACKBONES.register("R-50-FPN-RETINANET")
 @registry.BACKBONES.register("R-101-FPN-RETINANET")
 def build_resnet_fpn_p3p7_backbone(cfg):
