@@ -87,15 +87,23 @@ class RPNHead(nn.Module):
             num_anchors (int): number of anchors to be predicted
         """
         super(RPNHead, self).__init__()
+
+        # 3x3 卷积过后特征图大小不变, 这里通道数也没变
         self.conv = nn.Conv2d(
             in_channels, in_channels, kernel_size=3, stride=1, padding=1
         )
+
+        # 1x1 卷积之后输出的特征图通道数为 num_anchors, 因为输入特征图的每个 ceil 上都生成了
+        # num_anchors 个 anchors, 这里将输出的特征图每个 ceil 上每个通道的值都作为当前 anchor 的分类置信度
         self.cls_logits = nn.Conv2d(in_channels, num_anchors, kernel_size=1, stride=1)
+
+        # 为每个 anchor 生成 4 个 bbox 坐标预测值
         self.bbox_pred = nn.Conv2d(
             in_channels, num_anchors * 4, kernel_size=1, stride=1
         )
 
         for l in [self.conv, self.cls_logits, self.bbox_pred]:
+            # 初始化参数为正态分布, 标准差 0.01(默认值为1, 为啥设置成这个值不清楚)
             torch.nn.init.normal_(l.weight, std=0.01)
             torch.nn.init.constant_(l.bias, 0)
 
@@ -128,6 +136,8 @@ class RPNModule(torch.nn.Module):
         # 这是 RPNHead 对象在 registry.RPN_HEADS 中注册的名字, 它的值就是 RPNHead 对象
         # Python 中函数名和类名都是对象
         rpn_head = registry.RPN_HEADS[cfg.MODEL.RPN.RPN_HEAD]
+        
+        # in_channels 在 FPN 中为256, 也就是用来做检测的特征图的卷积核数量
         head = rpn_head(
             cfg, in_channels, anchor_generator.num_anchors_per_location()[0]
         )

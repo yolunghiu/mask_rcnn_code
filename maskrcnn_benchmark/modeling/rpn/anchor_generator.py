@@ -82,6 +82,8 @@ class AnchorGenerator(nn.Module):
 
     def num_anchors_per_location(self):
         # 返回每个 stage 的特征图上的每个 ceil 上有几个 anchor
+        # faster rcnn 中就一组特征图用来检测, list 中只有一个元素
+        # fpn 中有5组特征图用来进行检测, 但是每个 ceil 上 anchor 的数量是一样的
         return [len(cell_anchors) for cell_anchors in self.cell_anchors]
 
     def grid_anchors(self, grid_sizes):
@@ -140,13 +142,13 @@ class AnchorGenerator(nn.Module):
             # 参数值为0时,代表移除超出边界的anchors
             inds_inside = (
                 # 第一个坐标 >= 0
-                    (anchors[..., 0] >= -self.straddle_thresh)
-                    # 第二个坐标 >= 0
-                    & (anchors[..., 1] >= -self.straddle_thresh)
-                    # 第三个坐标 < image_width(+0)
-                    & (anchors[..., 2] < image_width + self.straddle_thresh)
-                    # 第四个坐标 < image_height(+0)
-                    & (anchors[..., 3] < image_height + self.straddle_thresh)
+                (anchors[..., 0] >= -self.straddle_thresh)
+                 # 第二个坐标 >= 0
+                & (anchors[..., 1] >= -self.straddle_thresh)
+                  # 第三个坐标 < image_width(+0)
+                & (anchors[..., 2] < image_width + self.straddle_thresh)
+                 # 第四个坐标 < image_height(+0)
+                & (anchors[..., 3] < image_height + self.straddle_thresh)
             )
         else:  # 参数值为-1时,代表裁剪超出边界的anchors,这时所有anchors都会保留
             device = anchors.device

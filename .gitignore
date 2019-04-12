@@ -35,3 +35,4 @@ MODEL_ZOO.md
 *.odt#
 
 .vscode
+/log
