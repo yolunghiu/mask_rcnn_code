@@ -30,8 +30,11 @@ class BoxCoder(object):
         """
 
         TO_REMOVE = 1  # TODO remove
-        ex_widths = proposals[:, 2] - proposals[:, 0] + TO_REMOVE
-        ex_heights = proposals[:, 3] - proposals[:, 1] + TO_REMOVE
+        ex_widths = proposals[:, 2] - proposals[:, 0] + TO_REMOVE  # 宽度
+        ex_heights = proposals[:, 3] - proposals[:, 1] + TO_REMOVE  # 高度
+
+        # 这里中心点坐标的计算与 anchor_generator 中的计算不太一样(宽度和高度没有减1)
+        # 只要 proposal 与 gt 计算方式一样就不会影响最终结果
         ex_ctr_x = proposals[:, 0] + 0.5 * ex_widths
         ex_ctr_y = proposals[:, 1] + 0.5 * ex_heights
 
@@ -41,6 +44,7 @@ class BoxCoder(object):
         gt_ctr_y = reference_boxes[:, 1] + 0.5 * gt_heights
 
         wx, wy, ww, wh = self.weights
+        # 这四个变量对应于 RCNN 论文中的 [t_x, t_y, t_w, t_h]
         targets_dx = wx * (gt_ctr_x - ex_ctr_x) / ex_widths
         targets_dy = wy * (gt_ctr_y - ex_ctr_y) / ex_heights
         targets_dw = ww * torch.log(gt_widths / ex_widths)
@@ -61,6 +65,8 @@ class BoxCoder(object):
 
         boxes = boxes.to(rel_codes.dtype)
 
+        # reference boxes 指的就是模型预测的 bbox regression 之前的 boxes
+        # 论文中是 [P_x, P_y, P_w, P_h]
         TO_REMOVE = 1  # TODO remove
         widths = boxes[:, 2] - boxes[:, 0] + TO_REMOVE
         heights = boxes[:, 3] - boxes[:, 1] + TO_REMOVE
@@ -68,6 +74,8 @@ class BoxCoder(object):
         ctr_y = boxes[:, 1] + 0.5 * heights
 
         wx, wy, ww, wh = self.weights
+        # 每四个数采样一个数
+        # d_* 是要学习的变换
         dx = rel_codes[:, 0::4] / wx
         dy = rel_codes[:, 1::4] / wy
         dw = rel_codes[:, 2::4] / ww
@@ -77,6 +85,7 @@ class BoxCoder(object):
         dw = torch.clamp(dw, max=self.bbox_xform_clip)
         dh = torch.clamp(dh, max=self.bbox_xform_clip)
 
+        # pred_* 是根据学得的变换 d_*, 将回归之前的 boxes 进行变换的结果
         pred_ctr_x = dx * widths[:, None] + ctr_x[:, None]
         pred_ctr_y = dy * heights[:, None] + ctr_y[:, None]
         pred_w = torch.exp(dw) * widths[:, None]
@@ -87,6 +96,10 @@ class BoxCoder(object):
         pred_boxes[:, 0::4] = pred_ctr_x - 0.5 * pred_w
         # y1
         pred_boxes[:, 1::4] = pred_ctr_y - 0.5 * pred_h
+
+        # 在 encode 函数中,计算中心点坐标 x_ctr = x1 + 0.5*width, 而 width = x2 - x1 + 1
+        # 所以 x2 = x_ctr + 0.5*width - 1
+        # 也可以直接用 x1 + width - 1, 更好理解, -1 是因为坐标是像素级别的, 0代表第0个ceil
         # x2 (note: "- 1" is correct; don't be fooled by the asymmetry)
         pred_boxes[:, 2::4] = pred_ctr_x + 0.5 * pred_w - 1
         # y2 (note: "- 1" is correct; don't be fooled by the asymmetry)

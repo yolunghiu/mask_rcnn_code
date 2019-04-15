@@ -136,13 +136,13 @@ class RPNModule(torch.nn.Module):
         # 这是 RPNHead 对象在 registry.RPN_HEADS 中注册的名字, 它的值就是 RPNHead 对象
         # Python 中函数名和类名都是对象
         rpn_head = registry.RPN_HEADS[cfg.MODEL.RPN.RPN_HEAD]
-        
+
         # in_channels 在 FPN 中为256, 也就是用来做检测的特征图的卷积核数量
         head = rpn_head(
             cfg, in_channels, anchor_generator.num_anchors_per_location()[0]
         )
 
-        # 其主要功能是将 bounding boxes 的表示形式编码成易于训练的形式(详细信息可查看R-CNN原文)
+        # 其主要功能是将 bounding boxes 的表示形式编码成易于训练的形式(出自 R-CNN Appendix C)
         rpn_box_coder = BoxCoder(weights=(1.0, 1.0, 1.0, 1.0))
 
         # inference.py
