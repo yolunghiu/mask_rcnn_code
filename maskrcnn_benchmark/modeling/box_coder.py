@@ -21,11 +21,11 @@ class BoxCoder(object):
 
     def encode(self, reference_boxes, proposals):
         """
-        Encode a set of proposals with respect to some
-        reference boxes
+        根据 GT Boxes 将 proposals 编码, 用于 bounding box regression
+        编码的结果是真实的平移和缩放值
 
         Arguments:
-            reference_boxes (Tensor): reference boxes
+            reference_boxes (Tensor): ground truth boxes
             proposals (Tensor): boxes to be encoded
         """
 
@@ -55,12 +55,12 @@ class BoxCoder(object):
 
     def decode(self, rel_codes, boxes):
         """
-        From a set of original boxes and encoded relative box offsets,
-        get the decoded boxes.
+        根据 bounding box regression 的回归结果, 将回归之前预测的 proposals
+        进行平移和缩放
 
         Arguments:
-            rel_codes (Tensor): encoded boxes
-            boxes (Tensor): reference boxes.
+            rel_codes (Tensor): 平移和缩放值
+            boxes (Tensor): proposals
         """
 
         boxes = boxes.to(rel_codes.dtype)
