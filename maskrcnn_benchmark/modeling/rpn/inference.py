@@ -10,6 +10,7 @@ from maskrcnn_benchmark.structures.boxlist_ops import remove_small_boxes
 from ..utils import cat
 from .utils import permute_and_flatten
 
+
 class RPNPostProcessor(torch.nn.Module):
     """
     Performs post-processing on the outputs of the RPN boxes, before feeding the
@@ -17,13 +18,13 @@ class RPNPostProcessor(torch.nn.Module):
     """
 
     def __init__(
-        self,
-        pre_nms_top_n,
-        post_nms_top_n,
-        nms_thresh,
-        min_size,
-        box_coder=None,
-        fpn_post_nms_top_n=None,
+            self,
+            pre_nms_top_n,
+            post_nms_top_n,
+            nms_thresh,
+            min_size,
+            box_coder=None,
+            fpn_post_nms_top_n=None,
     ):
         """
         Arguments:
@@ -123,7 +124,7 @@ class RPNPostProcessor(torch.nn.Module):
     def forward(self, anchors, objectness, box_regression, targets=None):
         """
         Arguments:
-            anchors: list[list[BoxList]]
+            anchors: list[list[BoxList]], 所有特征图上
             objectness: list[tensor]
             box_regression: list[tensor]
 
@@ -180,17 +181,21 @@ class RPNPostProcessor(torch.nn.Module):
 
 
 def make_rpn_postprocessor(config, rpn_box_coder, is_train):
-    fpn_post_nms_top_n = config.MODEL.RPN.FPN_POST_NMS_TOP_N_TRAIN
+    # fpn 所有 level 的输出最后保留的 boxes 数量
+    fpn_post_nms_top_n = config.MODEL.RPN.FPN_POST_NMS_TOP_N_TRAIN  # 2000
     if not is_train:
-        fpn_post_nms_top_n = config.MODEL.RPN.FPN_POST_NMS_TOP_N_TEST
+        fpn_post_nms_top_n = config.MODEL.RPN.FPN_POST_NMS_TOP_N_TEST  # 2000
 
-    pre_nms_top_n = config.MODEL.RPN.PRE_NMS_TOP_N_TRAIN
-    post_nms_top_n = config.MODEL.RPN.POST_NMS_TOP_N_TRAIN
+    # 对于 FPN 来说, 这里的参数指的是 per FPN level (not total)
+    pre_nms_top_n = config.MODEL.RPN.PRE_NMS_TOP_N_TRAIN  # 12000
+    post_nms_top_n = config.MODEL.RPN.POST_NMS_TOP_N_TRAIN  # 2000
     if not is_train:
-        pre_nms_top_n = config.MODEL.RPN.PRE_NMS_TOP_N_TEST
-        post_nms_top_n = config.MODEL.RPN.POST_NMS_TOP_N_TEST
+        pre_nms_top_n = config.MODEL.RPN.PRE_NMS_TOP_N_TEST  # 6000
+        post_nms_top_n = config.MODEL.RPN.POST_NMS_TOP_N_TEST  # 1000
+
+    # 非极大值抑制, 0.7
     nms_thresh = config.MODEL.RPN.NMS_THRESH
-    min_size = config.MODEL.RPN.MIN_SIZE
+    min_size = config.MODEL.RPN.MIN_SIZE  # 默认为 0
     box_selector = RPNPostProcessor(
         pre_nms_top_n=pre_nms_top_n,
         post_nms_top_n=post_nms_top_n,

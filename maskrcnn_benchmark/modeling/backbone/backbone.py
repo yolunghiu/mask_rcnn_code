@@ -35,6 +35,7 @@ def build_resnet_fpn_backbone(cfg):
     # 256, 在 FPN 的配置文件中被重新赋值了, 默认是256*4
     out_channels = cfg.MODEL.RESNETS.BACKBONE_OUT_CHANNELS
 
+    # 返回值是一个 tuple, 元组中每个元素是一个 level 的特征图
     fpn = fpn_module.FPN(
         in_channels_list=[
             in_channels_stage2,

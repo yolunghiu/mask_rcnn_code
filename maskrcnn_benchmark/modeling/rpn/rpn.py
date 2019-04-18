@@ -108,6 +108,11 @@ class RPNHead(nn.Module):
             torch.nn.init.constant_(l.bias, 0)
 
     def forward(self, x):
+        """
+            x: N*N*C
+            logits: [[N*N*num_anchors], ...] 有多少个特征图, list中就有多少元素
+            bbox_reg: [[N*N*4num_anchors], ...] 有多少个特征图, list中就有多少元素
+        """
         logits = []
         bbox_reg = []
         for feature in x:
@@ -173,7 +178,12 @@ class RPNModule(torch.nn.Module):
             losses (dict[Tensor]): the losses for the model during training. During
                 testing, it is an empty dict.
         """
+
+        # objectness 指的是 logits, 是一个 list, 每个元素代表一个 level 的特征图的输出(N*N*num_anchors)
+        # rpn_box_regression 中每个元素指的是每个 level 特征图的 box 预测值(N*N*4num_anchors)
         objectness, rpn_box_regression = self.head(features)
+
+        # 第一个维度是 batch_size
         anchors = self.anchor_generator(images, features)
 
         if self.training:

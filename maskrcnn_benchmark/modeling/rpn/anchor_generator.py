@@ -142,13 +142,13 @@ class AnchorGenerator(nn.Module):
             # 参数值为0时,代表移除超出边界的anchors
             inds_inside = (
                 # 第一个坐标 >= 0
-                (anchors[..., 0] >= -self.straddle_thresh)
-                 # 第二个坐标 >= 0
-                & (anchors[..., 1] >= -self.straddle_thresh)
-                  # 第三个坐标 < image_width(+0)
-                & (anchors[..., 2] < image_width + self.straddle_thresh)
-                 # 第四个坐标 < image_height(+0)
-                & (anchors[..., 3] < image_height + self.straddle_thresh)
+                    (anchors[..., 0] >= -self.straddle_thresh)
+                    # 第二个坐标 >= 0
+                    & (anchors[..., 1] >= -self.straddle_thresh)
+                    # 第三个坐标 < image_width(+0)
+                    & (anchors[..., 2] < image_width + self.straddle_thresh)
+                    # 第四个坐标 < image_height(+0)
+                    & (anchors[..., 3] < image_height + self.straddle_thresh)
             )
         else:  # 参数值为-1时,代表裁剪超出边界的anchors,这时所有anchors都会保留
             device = anchors.device
@@ -188,6 +188,7 @@ class AnchorGenerator(nn.Module):
             anchors.append(anchors_in_image)
 
         # [[boxlist, boxlist, ...], [boxlist, boxlist, ...], ...]
+        # 一个 batch 中每张图片对应一个 list
         # anchors.shape: (batch_size, number_stage)
         return anchors
 
