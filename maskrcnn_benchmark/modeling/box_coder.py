@@ -26,7 +26,7 @@ class BoxCoder(object):
 
         Arguments:
             reference_boxes (Tensor): ground truth boxes
-            proposals (Tensor): boxes to be encoded
+            proposals (Tensor): boxes to be encoded, 这里指的是生成的 anchors
         """
 
         TO_REMOVE = 1  # TODO remove
@@ -60,7 +60,7 @@ class BoxCoder(object):
 
         Arguments:
             rel_codes (Tensor): 平移和缩放值
-            boxes (Tensor): proposals
+            boxes (Tensor): proposals, 即生成的 anchors
         """
 
         boxes = boxes.to(rel_codes.dtype)

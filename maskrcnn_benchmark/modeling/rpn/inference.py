@@ -75,29 +75,40 @@ class RPNPostProcessor(torch.nn.Module):
     def forward_for_single_feature_map(self, anchors, objectness, box_regression):
         """
         Arguments:
-            anchors: list[BoxList]
+            anchors: list[BoxList], [image1-si-boxlist, image2-si-boxlist, ...]
             objectness: tensor of size N, A, H, W
             box_regression: tensor of size N, A * 4, H, W
         """
         device = objectness.device
         N, A, H, W = objectness.shape
 
-        # put in the same format as anchors
+        # objectness的shape是[N,A,H,W], 现在要把每个A*H*W的特征图拉成一个向量, 如果直接进行
+        # reshape操作, 展开的顺序是从A那一维开始的, 所以先交换维度再reshape, 先把H*W的特征图
+        # 拉成一个向量, 再把所有特征图拼接起来
         objectness = permute_and_flatten(objectness, N, A, 1, H, W).view(N, -1)
+
+        # rpn 中要进行的是不关心类别的二分类任务(object/bg)
+        # [N, H*W*A]
         objectness = objectness.sigmoid()
 
+        # [N, H*W*A, 4]
         box_regression = permute_and_flatten(box_regression, N, A, 4, H, W)
 
         num_anchors = A * H * W
 
+        # 根据置信度选出前 k 个 anchors, k = pre_nms_top_n
         pre_nms_top_n = min(self.pre_nms_top_n, num_anchors)
         objectness, topk_idx = objectness.topk(pre_nms_top_n, dim=1, sorted=True)
 
+        # box_regression 中同样保留 topk 的anchors
         batch_idx = torch.arange(N, device=device)[:, None]
         box_regression = box_regression[batch_idx, topk_idx]
 
         image_shapes = [box.size for box in anchors]
+        # boxList.bbox 返回对象中的 tensor, 将 batch 中所有图片的 anchors 拼接起来
+        # boxList.bbox 是个二维的 tensor, 参考 anchor_generator.grid_anchors
         concat_anchors = torch.cat([a.bbox for a in anchors], dim=0)
+        # reshape 之后: [N, H*W*A, 4], 然后选出 topk
         concat_anchors = concat_anchors.reshape(N, -1, 4)[batch_idx, topk_idx]
 
         proposals = self.box_coder.decode(
@@ -107,11 +118,16 @@ class RPNPostProcessor(torch.nn.Module):
         proposals = proposals.view(N, -1, 4)
 
         result = []
+        # 分别处理 batch 中的每一张图片
         for proposal, score, im_shape in zip(proposals, objectness, image_shapes):
             boxlist = BoxList(proposal, im_shape, mode="xyxy")
             boxlist.add_field("objectness", score)
+
+            # 将超出图片边界的 anchors 进行裁剪
             boxlist = boxlist.clip_to_image(remove_empty=False)
+            # 将宽度或高度小于 min_size 的 anchors 移除
             boxlist = remove_small_boxes(boxlist, self.min_size)
+
             boxlist = boxlist_nms(
                 boxlist,
                 self.nms_thresh,
@@ -124,17 +140,24 @@ class RPNPostProcessor(torch.nn.Module):
     def forward(self, anchors, objectness, box_regression, targets=None):
         """
         Arguments:
-            anchors: list[list[BoxList]], 所有特征图上
-            objectness: list[tensor]
-            box_regression: list[tensor]
+            anchors: list[list[BoxList]], 当前batch中所有level特征图上生成的anchors
+                     anchors.shape: (batch_size, num_stages)
+            objectness: list[tensor], 当前batch中每个level特征图的分类置信度, tensor四维
+            box_regression: list[tensor], 当前batch中每个level特征图的box预测值
 
         Returns:
             boxlists (list[BoxList]): the post-processed anchors, after
                 applying box decoding and NMS
         """
         sampled_boxes = []
-        num_levels = len(objectness)
+
+        num_levels = len(objectness)  # stage的数量
+
+        # anchors第一个维度是batch, 将其变成stage(level)
+        # [[image1-s1, image1-s2, ...], [image2-s1, image2-s2, ...], ...]
+        # -> [[image1-s1, image2-s1, ...], [image1-s2, image2-s2, ...], ...]
         anchors = list(zip(*anchors))
+
         for a, o, b in zip(anchors, objectness, box_regression):
             sampled_boxes.append(self.forward_for_single_feature_map(a, o, b))
 

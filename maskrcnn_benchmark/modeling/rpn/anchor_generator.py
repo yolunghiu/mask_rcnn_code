@@ -92,6 +92,8 @@ class AnchorGenerator(nn.Module):
         这个函数通过 base_anchors 和相关参数计算出特征图上的所有 anchors
 
         grid_sizes: 各种大小的用于特征提取的特征图的宽高, [(H1, W1), (H2, W2), ...]
+
+        这里返回的 anchors 中每个元素都是一个二维的 tensor, 第一维是 H*W*A, 第二维是4
         """
         anchors = []
 

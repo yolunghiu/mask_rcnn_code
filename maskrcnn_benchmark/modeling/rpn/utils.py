@@ -7,10 +7,17 @@ from ..utils import cat
 
 import torch
 
+
 def permute_and_flatten(layer, N, A, C, H, W):
+    # layer: [N, A*C, H, W] --> [N, A, C, H, W]
     layer = layer.view(N, -1, C, H, W)
-    layer = layer.permute(0, 3, 4, 1, 2)
-    layer = layer.reshape(N, -1, C)
+
+    # permute 相当于 np.transpose 函数
+    layer = layer.permute(0, 3, 4, 1, 2)  # [N, H, W, A, C]
+
+    # 可以理解为: 当前特征图上共有 H*W*A 个 anchors, 每个 anchors 根据需求预测出 C 个值
+    layer = layer.reshape(N, -1, C)  # [N, H*W*A, C]
+
     return layer
 
 
@@ -22,7 +29,7 @@ def concat_box_prediction_layers(box_cls, box_regression):
     # all feature levels concatenated, so we keep the same representation
     # for the objectness and the box_regression
     for box_cls_per_level, box_regression_per_level in zip(
-        box_cls, box_regression
+            box_cls, box_regression
     ):
         N, AxC, H, W = box_cls_per_level.shape
         Ax4 = box_regression_per_level.shape[1]

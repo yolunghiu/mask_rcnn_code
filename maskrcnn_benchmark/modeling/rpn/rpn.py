@@ -109,9 +109,9 @@ class RPNHead(nn.Module):
 
     def forward(self, x):
         """
-            x: N*N*C
-            logits: [[N*N*num_anchors], ...] 有多少个特征图, list中就有多少元素
-            bbox_reg: [[N*N*4num_anchors], ...] 有多少个特征图, list中就有多少元素
+            x: [N, C, H, W]
+            logits: [[N, num_anchors, H, W], ...] 有多少个level的特征图, list中就有多少元素
+            bbox_reg: [[N, 4*num_anchors, H, W], ...] 有多少个level的特征图, list中就有多少元素
         """
         logits = []
         bbox_reg = []
@@ -166,10 +166,9 @@ class RPNModule(torch.nn.Module):
     def forward(self, images, features, targets=None):
         """
         Arguments:
-            images (ImageList): images for which we want to compute the predictions
-            features (list[Tensor]): features computed from the images that are
-                used for computing the predictions. Each tensor in the list
-                correspond to different feature levels
+            images (ImageList): 一个 batch 的 images
+            features (list[Tensor]): 各个 level 的特征图, list 中的每个 Tensor 都是
+                四维的 [N, C, H, W], 第一维是 batch_size
             targets (list[BoxList): ground-truth boxes present in the image (optional)
 
         Returns:
@@ -179,11 +178,13 @@ class RPNModule(torch.nn.Module):
                 testing, it is an empty dict.
         """
 
-        # objectness 指的是 logits, 是一个 list, 每个元素代表一个 level 的特征图的输出(N*N*num_anchors)
-        # rpn_box_regression 中每个元素指的是每个 level 特征图的 box 预测值(N*N*4num_anchors)
+        # objectness 指的是 logits, 是一个 list, 每个元素代表一个 level 的特征图的输出
+        # [[N, num_anchors, H, W], ...]
+        # rpn_box_regression 中每个元素指的是每个 level 特征图的 box 预测值
+        # [[N, 4*num_anchors, H, W], ...]
         objectness, rpn_box_regression = self.head(features)
 
-        # 第一个维度是 batch_size
+        # anchors.shape: (batch_size, num_stages)
         anchors = self.anchor_generator(images, features)
 
         if self.training:
@@ -202,6 +203,7 @@ class RPNModule(torch.nn.Module):
             # For end-to-end models, anchors must be transformed into boxes and
             # sampled into a training batch.
             with torch.no_grad():
+                # 调用 forward 方法
                 boxes = self.box_selector_train(
                     anchors, objectness, rpn_box_regression, targets
                 )
