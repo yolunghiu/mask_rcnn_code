@@ -2,7 +2,7 @@
 __pycache__
 _ext
 *.pyc
-*.so
+#*.so
 maskrcnn_benchmark.egg-info/
 build/
 dist/
@@ -26,7 +26,7 @@ dist/
 
 # project dirs
 /LICENSE
-/setup.py
+#/setup.py
 .flake8
 /CONTRIBUTING.md
 INSTALL.md

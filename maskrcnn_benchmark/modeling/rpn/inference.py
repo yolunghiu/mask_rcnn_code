@@ -105,6 +105,7 @@ class RPNPostProcessor(torch.nn.Module):
         box_regression = box_regression[batch_idx, topk_idx]
 
         image_shapes = [box.size for box in anchors]
+
         # boxList.bbox 返回对象中的 tensor, 将 batch 中所有图片的 anchors 拼接起来
         # boxList.bbox 是个二维的 tensor, 参考 anchor_generator.grid_anchors
         concat_anchors = torch.cat([a.bbox for a in anchors], dim=0)
@@ -149,11 +150,12 @@ class RPNPostProcessor(torch.nn.Module):
             boxlists (list[BoxList]): the post-processed anchors, after
                 applying box decoding and NMS
         """
+        # 存放各个 level 处理过后的 anchors
         sampled_boxes = []
 
-        num_levels = len(objectness)  # stage的数量
+        num_levels = len(objectness)  # stage 的数量
 
-        # anchors第一个维度是batch, 将其变成stage(level)
+        # anchors 第一个维度是 batch, 将其变成 stage(level)
         # [[image1-s1, image1-s2, ...], [image2-s1, image2-s2, ...], ...]
         # -> [[image1-s1, image2-s1, ...], [image1-s2, image2-s2, ...], ...]
         anchors = list(zip(*anchors))
