@@ -11,6 +11,7 @@ at::Tensor nms(const at::Tensor& dets,
                const at::Tensor& scores,
                const float threshold) {
 
+  // 使用 cuda 版本的代码进行处理
   if (dets.type().is_cuda()) {
 #ifdef WITH_CUDA
     // TODO raise error if not compiled with CUDA
@@ -23,6 +24,7 @@ at::Tensor nms(const at::Tensor& dets,
 #endif
   }
 
+  // 使用 cpu 版本的代码进行处理
   at::Tensor result = nms_cpu(dets, scores, threshold);
   return result;
 }

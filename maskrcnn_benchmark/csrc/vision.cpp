@@ -4,6 +4,7 @@
 #include "ROIPool.h"
 #include "SigmoidFocalLoss.h"
 
+// TORCH_EXTENSION_NAME 是在 setup 函数中设置的 name 属性 (maskrcnn_benchmark._C)
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("nms", &nms, "non-maximum suppression");
   m.def("roi_align_forward", &ROIAlign_forward, "ROIAlign_forward");

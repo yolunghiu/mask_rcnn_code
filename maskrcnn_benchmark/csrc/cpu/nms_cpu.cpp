@@ -64,12 +64,34 @@ at::Tensor nms_cpu_kernel(const at::Tensor& dets,
   return at::nonzero(suppressed_t == 0).squeeze(1);
 }
 
+// dets: 所有 anchors 的四个坐标值 [H*W*A, 4]
+// scores: 所有 anchors 的置信度 [H*W*A, ]
 at::Tensor nms_cpu(const at::Tensor& dets,
                const at::Tensor& scores,
                const float threshold) {
   at::Tensor result;
+
+  // ATEN 提供了接口函数 AT_DISPATCH_FLOATING_TYPES, 这个函数接收三个参数
+  // 第一个参数是输入数据的源类型
+  // 第二个参数是操作的标识符（用于报错显示）
+  // 第三个参数是一个匿名函数
+  // 在匿名函数运行结束后, AT_DISPATCH_FLOATING_TYPES 会将 Float 数组转化为目标类型（运行中的实际类型）数组
   AT_DISPATCH_FLOATING_TYPES(dets.type(), "nms", [&] {
     result = nms_cpu_kernel<scalar_t>(dets, scores, threshold);
   });
+
   return result;
 }
+
+/* 关于匿名函数
+
+    [](int x, int y) { return x + y; }
+    [配置](参数){程序体}
+
+    [&](int x, int y) { return x + y; }
+    参数按引用传递
+
+    [=](int x, int y) { return x + y; }
+    参数按值传递
+
+*/

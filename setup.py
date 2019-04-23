@@ -69,5 +69,5 @@ setup(
     cmdclass={"build_ext": torch.utils.cpp_extension.BuildExtension},
 )
 
-if __name__ == '__main__':
-    print(get_extensions())
+# if __name__ == '__main__':
+#     get_extensions()
