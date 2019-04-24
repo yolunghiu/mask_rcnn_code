@@ -267,3 +267,9 @@ if __name__ == "__main__":
     t_bbox = bbox.transpose(0)
     print(t_bbox)
     print(t_bbox.bbox)
+
+    t_bbox.add_field("hello", "world")
+    t_bbox.add_field("test", "123")
+
+    print(t_bbox.fields())
+    print(set(t_bbox.fields()))

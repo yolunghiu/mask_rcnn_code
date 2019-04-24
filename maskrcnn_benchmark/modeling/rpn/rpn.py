@@ -203,7 +203,7 @@ class RPNModule(torch.nn.Module):
             # For end-to-end models, anchors must be transformed into boxes and
             # sampled into a training batch.
             with torch.no_grad():
-                # 调用 forward 方法
+                # 调用 inference.py 中 RPNPostProcessor 的 forward 方法
                 boxes = self.box_selector_train(
                     anchors, objectness, rpn_box_regression, targets
                 )

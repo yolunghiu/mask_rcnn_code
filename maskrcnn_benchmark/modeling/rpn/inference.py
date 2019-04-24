@@ -78,6 +78,8 @@ class RPNPostProcessor(torch.nn.Module):
             anchors: list[BoxList], [image1-si-boxlist, image2-si-boxlist, ...]
             objectness: tensor of size N, A, H, W
             box_regression: tensor of size N, A * 4, H, W
+
+        返回值是一个 list, len(result)=batch_size, 每个元素都是一个 BoxList 对象
         """
         device = objectness.device
         N, A, H, W = objectness.shape
@@ -128,7 +130,7 @@ class RPNPostProcessor(torch.nn.Module):
             boxlist = boxlist.clip_to_image(remove_empty=False)
             # 将宽度或高度小于 min_size 的 anchors 移除
             boxlist = remove_small_boxes(boxlist, self.min_size)
-
+            # nms
             boxlist = boxlist_nms(
                 boxlist,
                 self.nms_thresh,
@@ -163,7 +165,11 @@ class RPNPostProcessor(torch.nn.Module):
         for a, o, b in zip(anchors, objectness, box_regression):
             sampled_boxes.append(self.forward_for_single_feature_map(a, o, b))
 
+        # sampled_boxes 第一个维度是 level, 第二个维度是 batch_size, 将这两个维度置换
         boxlists = list(zip(*sampled_boxes))
+
+        # 经过上面的置换之后, boxlists: [[img1-s1, img1-s2, ...], [img2-s1, img2-s2, ...], ...]
+        # 将其转换成: [img1-boxlist, img2-boxlist, ...]
         boxlists = [cat_boxlist(boxlist) for boxlist in boxlists]
 
         if num_levels > 1:
@@ -176,24 +182,38 @@ class RPNPostProcessor(torch.nn.Module):
         return boxlists
 
     def select_over_all_levels(self, boxlists):
+        """
+        boxlists: [img1-boxlist, img2-boxlist, ...]
+        """
+
+        # batch_size
         num_images = len(boxlists)
+
         # different behavior during training and during testing:
         # during training, post_nms_top_n is over *all* the proposals combined, while
         # during testing, it is over the proposals for each image
         # TODO resolve this difference and make it consistent. It should be per image,
         # and not per batch
+        # 训练阶段的处理流程
         if self.training:
+            # 把一个 batch 中所有的 objectness 连接起来
             objectness = torch.cat(
                 [boxlist.get_field("objectness") for boxlist in boxlists], dim=0
             )
+
+            # 每张图片的 boxlist 中 box 的数量
             box_sizes = [len(boxlist) for boxlist in boxlists]
+
+            # fpn 中在 nms 之后要保留的 box 数量
             post_nms_top_n = min(self.fpn_post_nms_top_n, len(objectness))
+
             _, inds_sorted = torch.topk(objectness, post_nms_top_n, dim=0, sorted=True)
             inds_mask = torch.zeros_like(objectness, dtype=torch.uint8)
             inds_mask[inds_sorted] = 1
             inds_mask = inds_mask.split(box_sizes)
             for i in range(num_images):
                 boxlists[i] = boxlists[i][inds_mask[i]]
+        # 测试阶段的处理流程
         else:
             for i in range(num_images):
                 objectness = boxlists[i].get_field("objectness")

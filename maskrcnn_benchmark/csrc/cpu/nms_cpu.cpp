@@ -81,6 +81,8 @@ at::Tensor nms_cpu_kernel(const at::Tensor& dets,
         suppressed[j] = 1;
    }
   }
+
+  // nonzero: returns a tensor containing the indices of all non-zero elements
   return at::nonzero(suppressed_t == 0).squeeze(1);
 }
 

@@ -103,21 +103,22 @@ def _cat(tensors, dim=0):
 
 def cat_boxlist(bboxes):
     """
-    Concatenates a list of BoxList (having the same image size) into a
-    single BoxList
+    把多个 BoxList 对象(image size 相同) 合并成一个
 
     Arguments:
-        bboxes (list[BoxList])
+        bboxes (list[BoxList]), 一张图片上所有 level 的 boxlist 对象
     """
     assert isinstance(bboxes, (list, tuple))
     assert all(isinstance(bbox, BoxList) for bbox in bboxes)
 
+    # size 指的是 image_size
     size = bboxes[0].size
     assert all(bbox.size == size for bbox in bboxes)
 
     mode = bboxes[0].mode
     assert all(bbox.mode == mode for bbox in bboxes)
 
+    # 获取 boxlist 对象中的所有属性名称
     fields = set(bboxes[0].fields())
     assert all(set(bbox.fields()) == fields for bbox in bboxes)
 
