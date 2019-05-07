@@ -259,17 +259,23 @@ class BoxList(object):
 
 
 if __name__ == "__main__":
-    bbox = BoxList([[0, 0, 10, 10], [0, 0, 5, 5]], (10, 10))
-    s_bbox = bbox.resize((5, 5))
-    print(s_bbox)
-    print(s_bbox.bbox)
+    bbox = BoxList([[0, 0, 10, 10], [0, 0, 5, 5], [1, 1, 2, 2]], (10, 10))
+    print(bbox)
+    # s_bbox = bbox.resize((5, 5))
+    # print(s_bbox)
+    # print(s_bbox.bbox)
+    #
+    # t_bbox = bbox.transpose(0)
+    # print(t_bbox)
+    # print(t_bbox.bbox)
+    #
+    # t_bbox.add_field("hello", "world")
+    # t_bbox.add_field("test", "123")
+    #
+    # print(t_bbox.fields())
+    # print(set(t_bbox.fields()))
 
-    t_bbox = bbox.transpose(0)
-    print(t_bbox)
-    print(t_bbox.bbox)
-
-    t_bbox.add_field("hello", "world")
-    t_bbox.add_field("test", "123")
-
-    print(t_bbox.fields())
-    print(set(t_bbox.fields()))
+    print(bbox.size)
+    print(len(bbox))
+    sub = bbox[[0,2]]
+    print(sub)

@@ -1,32 +1,22 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 """
 Implements the Generalized R-CNN framework
 """
 
-import torch
 from torch import nn
 
 from maskrcnn_benchmark.structures.image_list import to_image_list
-
 from ..backbone import build_backbone
-from ..rpn.rpn import build_rpn
 from ..roi_heads.roi_heads import build_roi_heads
+from ..rpn.rpn import build_rpn
 
 
 class GeneralizedRCNN(nn.Module):
     """
-    Main class for Generalized R-CNN. Currently supports boxes and masks.
-    It consists of three main parts:
+    该类主要包含以下三个部分:
     - backbone
-    - rpn
-    - heads: takes the features + the proposals from the RPN and computes
-        detections / masks from it.
+    - rpn(option)
+    - heads: 利用前面网络输出的 features 和 proposals 来计算 detections / masks.
     """
-
-    # 该类主要包含以下三个部分:
-    # - backbone
-    # - rpn(option)
-    # - heads: 利用前面网络输出的 features 和 proposals 来计算 detections / masks.
 
     def __init__(self, cfg):
         super(GeneralizedRCNN, self).__init__()
@@ -37,7 +27,7 @@ class GeneralizedRCNN(nn.Module):
         # rpn.py 构建 region proposal network
         # out_channels 在 ResNet 中为 256*4, 在 FPN 中为 256
         self.rpn = build_rpn(cfg, self.backbone.out_channels)
-        
+
         self.roi_heads = build_roi_heads(cfg, self.backbone.out_channels)
 
     def forward(self, images, targets=None):

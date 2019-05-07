@@ -1,13 +1,10 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
 
 from maskrcnn_benchmark.modeling.box_coder import BoxCoder
 from maskrcnn_benchmark.structures.bounding_box import BoxList
-from maskrcnn_benchmark.structures.boxlist_ops import cat_boxlist
 from maskrcnn_benchmark.structures.boxlist_ops import boxlist_nms
+from maskrcnn_benchmark.structures.boxlist_ops import cat_boxlist
 from maskrcnn_benchmark.structures.boxlist_ops import remove_small_boxes
-
-from ..utils import cat
 from .utils import permute_and_flatten
 
 
@@ -26,15 +23,6 @@ class RPNPostProcessor(torch.nn.Module):
             box_coder=None,
             fpn_post_nms_top_n=None,
     ):
-        """
-        Arguments:
-            pre_nms_top_n (int)
-            post_nms_top_n (int)
-            nms_thresh (float)
-            min_size (int)
-            box_coder (BoxCoder)
-            fpn_post_nms_top_n (int)
-        """
         super(RPNPostProcessor, self).__init__()
         self.pre_nms_top_n = pre_nms_top_n
         self.post_nms_top_n = post_nms_top_n
@@ -51,6 +39,8 @@ class RPNPostProcessor(torch.nn.Module):
 
     def add_gt_proposals(self, proposals, targets):
         """
+        对于 proposals 中每张图片的 boxlist, 直接将这张图片上的 gt_box 添加进去
+
         Arguments:
             proposals: list[BoxList]
             targets: list[BoxList]
@@ -162,6 +152,7 @@ class RPNPostProcessor(torch.nn.Module):
         # -> [[image1-s1, image2-s1, ...], [image1-s2, image2-s2, ...], ...]
         anchors = list(zip(*anchors))
 
+        # 这步操作主要是进行超出图片anchors的处理,宽度高度为0的anchors的处理以及nms
         for a, o, b in zip(anchors, objectness, box_regression):
             sampled_boxes.append(self.forward_for_single_feature_map(a, o, b))
 
@@ -172,6 +163,8 @@ class RPNPostProcessor(torch.nn.Module):
         # 将其转换成: [img1-boxlist, img2-boxlist, ...]
         boxlists = [cat_boxlist(boxlist) for boxlist in boxlists]
 
+        # 对于 fpn 来说, 上面进行 nms 时保留的 anchor 数量是对于每个 level 来说的
+        # 这里对所有 level 的 anchor 再进行一次筛选, 选出 fpn_post_nms_top_n 个置信度较大的 anchor
         if num_levels > 1:
             boxlists = self.select_over_all_levels(boxlists)
 
@@ -179,6 +172,7 @@ class RPNPostProcessor(torch.nn.Module):
         if self.training and targets is not None:
             boxlists = self.add_gt_proposals(boxlists, targets)
 
+        # [img1-boxlist, img2-boxlist, ...]
         return boxlists
 
     def select_over_all_levels(self, boxlists):
@@ -189,12 +183,8 @@ class RPNPostProcessor(torch.nn.Module):
         # batch_size
         num_images = len(boxlists)
 
-        # different behavior during training and during testing:
-        # during training, post_nms_top_n is over *all* the proposals combined, while
-        # during testing, it is over the proposals for each image
-        # TODO resolve this difference and make it consistent. It should be per image,
-        # and not per batch
-        # 训练阶段的处理流程
+        # TODO resolve this difference and make it consistent. It should be per image, and not per batch
+        # 训练阶段的处理流程, 训练阶段是从一个 batch 的所有 image 中选出 post_nms_top_n 个 proposals
         if self.training:
             # 把一个 batch 中所有的 objectness 连接起来
             objectness = torch.cat(
@@ -207,13 +197,17 @@ class RPNPostProcessor(torch.nn.Module):
             # fpn 中在 nms 之后要保留的 box 数量
             post_nms_top_n = min(self.fpn_post_nms_top_n, len(objectness))
 
+            # 从所有置信度中选出前 post_nms_top_n 个
             _, inds_sorted = torch.topk(objectness, post_nms_top_n, dim=0, sorted=True)
+
             inds_mask = torch.zeros_like(objectness, dtype=torch.uint8)
             inds_mask[inds_sorted] = 1
-            inds_mask = inds_mask.split(box_sizes)
+            inds_mask = inds_mask.split(box_sizes)  # 将索引值按照每张图片上box的数量进行划分
+
             for i in range(num_images):
+                # BoxList 对象支持索引, 这里直接取出按置信度排序后的所有 box
                 boxlists[i] = boxlists[i][inds_mask[i]]
-        # 测试阶段的处理流程
+        # 测试阶段的处理流程, 不同于训练阶段, 这时是从每张图片中选出 fpn_post_nms_top_n 个 proposals
         else:
             for i in range(num_images):
                 objectness = boxlists[i].get_field("objectness")
@@ -226,6 +220,10 @@ class RPNPostProcessor(torch.nn.Module):
 
 
 def make_rpn_postprocessor(config, rpn_box_coder, is_train):
+    """
+    创建 RPNPostProcessor 对象
+    """
+
     # fpn 所有 level 的输出最后保留的 boxes 数量
     fpn_post_nms_top_n = config.MODEL.RPN.FPN_POST_NMS_TOP_N_TRAIN  # 2000
     if not is_train:

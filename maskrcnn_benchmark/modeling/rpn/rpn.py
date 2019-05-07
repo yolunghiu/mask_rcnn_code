@@ -6,9 +6,9 @@ from torch import nn
 from maskrcnn_benchmark.modeling import registry
 from maskrcnn_benchmark.modeling.box_coder import BoxCoder
 from maskrcnn_benchmark.modeling.rpn.retinanet.retinanet import build_retinanet
-from .loss import make_rpn_loss_evaluator
 from .anchor_generator import make_anchor_generator
 from .inference import make_rpn_postprocessor
+from .loss import make_rpn_loss_evaluator
 
 
 class RPNHeadConvRegressor(nn.Module):
@@ -139,7 +139,6 @@ class RPNModule(torch.nn.Module):
 
         # cfg.MODEL.RPN.RPN_HEAD: "SingleConvRPNHead"
         # 这是 RPNHead 对象在 registry.RPN_HEADS 中注册的名字, 它的值就是 RPNHead 对象
-        # Python 中函数名和类名都是对象
         rpn_head = registry.RPN_HEADS[cfg.MODEL.RPN.RPN_HEAD]
 
         # in_channels 在 FPN 中为256, 也就是用来做检测的特征图的卷积核数量
@@ -150,7 +149,7 @@ class RPNModule(torch.nn.Module):
         # 其主要功能是将 bounding boxes 的表示形式编码成易于训练的形式(出自 R-CNN Appendix C)
         rpn_box_coder = BoxCoder(weights=(1.0, 1.0, 1.0, 1.0))
 
-        # inference.py
+        # RPNPostProcessor, 主要是进行 anchor 的筛选, nms 以及为 proposals 添加 gt_box (训练阶段)
         box_selector_train = make_rpn_postprocessor(cfg, rpn_box_coder, is_train=True)
         box_selector_test = make_rpn_postprocessor(cfg, rpn_box_coder, is_train=False)
 
@@ -178,13 +177,16 @@ class RPNModule(torch.nn.Module):
                 testing, it is an empty dict.
         """
 
-        # objectness 指的是 logits, 是一个 list, 每个元素代表一个 level 的特征图的输出
-        # [[N, num_anchors, H, W], ...]
-        # rpn_box_regression 中每个元素指的是每个 level 特征图的 box 预测值
-        # [[N, 4*num_anchors, H, W], ...]
+        """
+        objectness 是置信度, 是一个 list, 第一个维度是 level, 第二个维度是一个 batch 中
+          当前 level 输出的特征图   [[N, num_anchors, H, W], ...]
+        rpn_box_regression 中每个元素指的是每个 level 特征图的 box 预测值
+          [[N, 4*num_anchors, H, W], ...]
+        """
         objectness, rpn_box_regression = self.head(features)
 
         # anchors.shape: (batch_size, num_stages)
+        # [[boxlist, boxlist, ...], [boxlist, boxlist, ...], ...]
         anchors = self.anchor_generator(images, features)
 
         if self.training:
@@ -231,9 +233,6 @@ class RPNModule(torch.nn.Module):
 
 
 def build_rpn(cfg, in_channels):
-    """
-    This gives the gist of it. Not super important because it doesn't change as much
-    """
     if cfg.MODEL.RETINANET_ON:
         return build_retinanet(cfg, in_channels)
 
