@@ -4,15 +4,13 @@ import torch
 class Matcher(object):
     """
     这个类将预测的 box 与 gt_box 对应起来. 每个预测的 box 只有0个或1个匹配的 gt_box; 但
-    一个 gt_box 可能对应于多个预测的 box
+    一个 gt_box 可能对应于多个预测的 box.
 
-    Matching is based on the MxN match_quality_matrix, that characterizes how well
-    each (ground-truth, predicted)-pair match. For example, if the elements are
-    boxes, the matrix may contain box IoU overlap values.
+    匹配操作基于MxN的矩阵match_quality_matrix进行, 矩阵中每个值代表(gt, predicted)的匹配度.
+    例如对于基于IoU的box匹配来说, 矩阵中每个元素都代表了两个box之间的IoU.
 
-    The matcher returns a tensor of size N containing the index of the ground-truth
-    element m that matches to prediction n. If there is no match, a negative value
-    is returned.
+    matcher对象返回的是一个N维tensor, 每个元素的值都是某个gt_box的索引值, 如果当前预测box没有
+    与任何gt_box匹配, 则该位置为负数.
     """
 
     BELOW_LOW_THRESHOLD = -1
@@ -59,9 +57,7 @@ class Matcher(object):
                     "No proposal boxes available for one of the images "
                     "during training")
 
-        # match_quality_matrix is M (gt) x N (predicted)
-        # 最大值, 最大值索引, N 维 tensor
-        # 从每个预测的box出发,找到当前预测box与所有gt_box重叠最大的那个,不考虑阈值
+        # 从每个预测的box出发,找到当前预测box与所有gt_box重叠最大的那个
         matched_vals, matches = match_quality_matrix.max(dim=0)
 
         # matches[0]: 第0个预测值与第matches[0]个gt_box匹配...
@@ -85,12 +81,12 @@ class Matcher(object):
     def set_low_quality_matches_(self, matches, all_matches, match_quality_matrix):
         """
         Produce additional matches for predictions that have only low-quality matches.
-        Specifically, for each ground-truth find the set of predictions that have
+        Specifically, for each ground-truth find **the set of predictions** that have
         maximum overlap with it (including ties); for each prediction in that set, if
         it is unmatched, then match it to the ground-truth with which it has the highest
         quality value.
         """
-        # 对每一个 gt_box 来说, 所有预测框中的最佳匹配值, M 维 tensor
+        # 从gt_box出发, 对每一个 gt_box 来说, 所有预测框中的最佳匹配值, M 维 tensor
         highest_quality_foreach_gt, _ = match_quality_matrix.max(dim=1)
 
         # nonzero 函数返回的是 tensor 中非0元素的索引值
@@ -110,7 +106,14 @@ class Matcher(object):
         #           [    5, 45325],
         #           [    5, 46390]])
         # Each row is a (gt index, prediction index)
-        # Note how gt items 1, 2, 3, and 5 each have two ties
+        # MxN矩阵中每一行都可能出现多个最大值相等的情况, 因此会出现一个gt_box对应多个预测box的情况
 
         pred_inds_to_update = gt_pred_pairs_of_highest_quality[:, 1]
+
+        # 这行代码只对那些IoU小于阈值的预测box 有效
+        # 某个预测box和所有gt_box的IoU都小于阈值, 这个预测box的label将被设置
+        # 为负数, 这时有一种情况需要特别处理: 某个gt_box与所有预测box匹配之后得到的
+        # 最佳匹配box正好是这个label被置为负的预测box. 如果不处理这种情况, 意味着这个
+        # gt_box没有任何一个预测box与之对于. 这种情况下即使预测box与所有gt_box的IoU
+        # 都小于阈值, 也要将其label设置成当前gt_box的label
         matches[pred_inds_to_update] = all_matches[pred_inds_to_update]
