@@ -138,8 +138,8 @@ def generate_rpn_labels(matched_targets):
 
 def make_rpn_loss_evaluator(cfg, box_coder):
     matcher = Matcher(
-        cfg.MODEL.RPN.FG_IOU_THRESHOLD,
-        cfg.MODEL.RPN.BG_IOU_THRESHOLD,
+        cfg.MODEL.RPN.FG_IOU_THRESHOLD,  # 0.7
+        cfg.MODEL.RPN.BG_IOU_THRESHOLD,  # 0.3
         allow_low_quality_matches=True,
     )
 
