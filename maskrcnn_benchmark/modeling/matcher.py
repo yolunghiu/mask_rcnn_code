@@ -19,16 +19,10 @@ class Matcher(object):
     def __init__(self, high_threshold, low_threshold, allow_low_quality_matches=False):
         """ 0.7, 0.3, True
         Args:
-            high_threshold (float): quality values greater than or equal to
-                this value are candidate matches.
-            low_threshold (float): a lower quality threshold used to stratify
-                matches into three levels:
-                1) matches >= high_threshold
-                2) BETWEEN_THRESHOLDS matches in [low_threshold, high_threshold)
-                3) BELOW_LOW_THRESHOLD matches in [0, low_threshold)
-            allow_low_quality_matches (bool): if True, produce additional matches
-                for predictions that have only low-quality match candidates. See
-                set_low_quality_matches_ for more details.
+            high_threshold (float): 置信度大于等于该阈值的 box 被选为候选框. 如 0.7
+            low_threshold (float): 置信度小于high阈值但是大于等于low阈值的置为 BETWEEN_THRESHOLD,
+                置信度小于low阈值的置为 BELOW_LOW_THRESHOLD
+            allow_low_quality_matches (bool): 若为真, 则会产生额外一些只有低匹配度的候选框
         """
         assert low_threshold <= high_threshold
         self.high_threshold = high_threshold
@@ -46,6 +40,7 @@ class Matcher(object):
             matches (Tensor[int64]): N 维的 tensor, N[i] 是匹配到的 [0, M-1]
             范围内的 gt 或者一个负数(代表没匹配到任何 gt)
         """
+
         if match_quality_matrix.numel() == 0:
             # empty targets or proposals not supported during training
             if match_quality_matrix.shape[0] == 0:
@@ -57,7 +52,7 @@ class Matcher(object):
                     "No proposal boxes available for one of the images "
                     "during training")
 
-        # 从每个预测的box出发,找到当前预测box与所有gt_box重叠最大的那个
+        # 从每个预测的box出发,为每个prediction找到匹配度最高的gt
         matched_vals, matches = match_quality_matrix.max(dim=0)
 
         # matches[0]: 第0个预测值与第matches[0]个gt_box匹配...
@@ -80,11 +75,13 @@ class Matcher(object):
 
     def set_low_quality_matches_(self, matches, all_matches, match_quality_matrix):
         """
-        Produce additional matches for predictions that have only low-quality matches.
-        Specifically, for each ground-truth find **the set of predictions** that have
-        maximum overlap with it (including ties); for each prediction in that set, if
-        it is unmatched, then match it to the ground-truth with which it has the highest
-        quality value.
+        为那些仅具有低匹配度的predictions添加额外的matches. 具体来说, 就是给每一个gt找到一个具有
+        最大IoU的prediction集合. 对于集合中的每一个prediction, 如果它还没有与其他gt匹配, 则把它
+        匹配到具有最高匹配值的gt上 (注意是该prediction列中的最大值对于的gt, 并不一定是通过gt定位该
+        预测值时的gt.
+            TODO: 目前不太清楚为什么这么做, 猜测有可能是因为只想保留这个prediction, 因为它离那个
+                选出的gt比较近, 但是这时候并不关心这个prediction的label到底设成了哪个gt
+        ).
         """
         # 从gt_box出发, 对每一个 gt_box 来说, 所有预测框中的最佳匹配值, M 维 tensor
         highest_quality_foreach_gt, _ = match_quality_matrix.max(dim=1)
@@ -108,12 +105,9 @@ class Matcher(object):
         # Each row is a (gt index, prediction index)
         # MxN矩阵中每一行都可能出现多个最大值相等的情况, 因此会出现一个gt_box对应多个预测box的情况
 
+        # 从gt出发选出的所有prediction的索引值
         pred_inds_to_update = gt_pred_pairs_of_highest_quality[:, 1]
 
-        # 这行代码只对那些IoU小于阈值的预测box 有效
-        # 某个预测box和所有gt_box的IoU都小于阈值, 这个预测box的label将被设置
-        # 为负数, 这时有一种情况需要特别处理: 某个gt_box与所有预测box匹配之后得到的
-        # 最佳匹配box正好是这个label被置为负的预测box. 如果不处理这种情况, 意味着这个
-        # gt_box没有任何一个预测box与之对于. 这种情况下即使预测box与所有gt_box的IoU
-        # 都小于阈值, 也要将其label设置成当前gt_box的label
+        # 如果选出的prediction中预测值是low quality的(负值), 把它更新为
+        # **与该prediction的IoU最大的那个gt**
         matches[pred_inds_to_update] = all_matches[pred_inds_to_update]
