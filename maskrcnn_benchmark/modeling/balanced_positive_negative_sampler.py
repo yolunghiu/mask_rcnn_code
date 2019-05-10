@@ -1,17 +1,16 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
 
 
 class BalancedPositiveNegativeSampler(object):
     """
-    This class samples batches, ensuring that they contain a fixed proportion of positives
+    该类用于生成采样 batch, 使得 batch 中的正负样本比例维持一个固定的数
     """
 
     def __init__(self, batch_size_per_image, positive_fraction):
         """
         Arguments:
-            batch_size_per_image (int): number of elements to be selected per image
-            positive_fraction (float): percentace of positive elements per batch
+            batch_size_per_image (int): 每张图片包含的样本个数
+            positive_fraction (float): 每个batch中正样本的比例
         """
         self.batch_size_per_image = batch_size_per_image
         self.positive_fraction = positive_fraction
