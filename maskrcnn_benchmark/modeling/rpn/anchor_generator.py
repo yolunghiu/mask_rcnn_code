@@ -189,9 +189,9 @@ class AnchorGenerator(nn.Module):
 
             anchors.append(anchors_in_image)
 
-        # [[boxlist, boxlist, ...], [boxlist, boxlist, ...], ...]
         # 一个 batch 中每张图片对应一个 list
-        # anchors.shape: (batch_size, number_stage)
+        # anchors: (batch_size, number_stage)
+        #          [[boxlist, boxlist, ...], [boxlist, boxlist, ...], ...]
         return anchors
 
 

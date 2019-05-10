@@ -71,6 +71,7 @@ class Matcher(object):
         if self.allow_low_quality_matches:
             self.set_low_quality_matches_(matches, all_matches, match_quality_matrix)
 
+        # N维向量, 与prediction的box数量相同
         return matches
 
     def set_low_quality_matches_(self, matches, all_matches, match_quality_matrix):

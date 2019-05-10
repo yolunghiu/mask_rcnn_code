@@ -1,14 +1,12 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
 
-from .bounding_box import BoxList
-
 from maskrcnn_benchmark.layers import nms as _box_nms
+from .bounding_box import BoxList
 
 
 def boxlist_nms(boxlist, nms_thresh, max_proposals=-1, score_field="scores"):
-    """
-    根据 score_field 对 boxlist 中的所有 box 进行非极大值抑制
+    """根据 score_field 对 boxlist 中的所有 box 进行非极大值抑制
 
     Arguments:
         boxlist(BoxList)
@@ -50,21 +48,16 @@ def remove_small_boxes(boxlist, min_size):
     return boxlist[keep]
 
 
-# implementation from https://github.com/kuangliu/torchcv/blob/master/torchcv/utils/box.py
-# with slight modifications
 def boxlist_iou(boxlist1, boxlist2):
-    """Compute the intersection over union of two set of boxes.
+    """计算两个给定boxlist对象中所有box之间的IoU
     The box order must be (xmin, ymin, xmax, ymax).
 
     Arguments:
-      box1: (BoxList) bounding boxes, sized [N,4].
-      box2: (BoxList) bounding boxes, sized [M,4].
+      boxlist1: (BoxList) bounding boxes, sized [N,4].
+      boxlist1: (BoxList) bounding boxes, sized [M,4].
 
     Returns:
       (tensor) iou, sized [N,M].
-
-    Reference:
-      https://github.com/chainer/chainercv/blob/master/chainercv/utils/bbox/bbox_iou.py
     """
     if boxlist1.size != boxlist2.size:
         raise RuntimeError(
@@ -78,6 +71,7 @@ def boxlist_iou(boxlist1, boxlist2):
 
     box1, box2 = boxlist1.bbox, boxlist2.bbox
 
+    # 下面这几行广播机制计算面积的代码太简洁了
     lt = torch.max(box1[:, None, :2], box2[:, :2])  # [N,M,2]
     rb = torch.min(box1[:, None, 2:], box2[:, 2:])  # [N,M,2]
 

@@ -177,12 +177,10 @@ class RPNModule(torch.nn.Module):
                 testing, it is an empty dict.
         """
 
-        """
-        objectness 是置信度, 是一个 list, 第一个维度是 level, 第二个维度是一个 batch 中
-          当前 level 输出的特征图   [[N, num_anchors, H, W], ...]
-        rpn_box_regression 中每个元素指的是每个 level 特征图的 box 预测值
-          [[N, 4*num_anchors, H, W], ...]
-        """
+        # objectness 是置信度, 是一个 list, 第一个维度是 level, 第二个维度是一个 batch 中
+        #   当前 level 输出的特征图   [[N, num_anchors, H, W], ...]
+        # rpn_box_regression 中每个元素指的是每个 level 特征图的 box 预测值
+        #   [[N, 4*num_anchors, H, W], ...]
         objectness, rpn_box_regression = self.head(features)
 
         # anchors.shape: (batch_size, num_stages)
