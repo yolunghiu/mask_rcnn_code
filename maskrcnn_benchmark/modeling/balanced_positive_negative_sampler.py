@@ -18,18 +18,12 @@ class BalancedPositiveNegativeSampler(object):
     def __call__(self, matched_idxs):
         """
         Arguments:
-            matched idxs: list of tensors containing -1, 0 or positive values.
-                Each tensor corresponds to a specific image.
-                -1 values are ignored, 0 are considered as negatives and > 0 as
-                positives.
-
+            matched_idxs: list[Tensor], tensor中包含3类值: -1(ignored), 0(bg), 1(fg)
+                [img_batch, num_anchors]
         Returns:
-            pos_idx (list[tensor])
-            neg_idx (list[tensor])
-
-        Returns two lists of binary masks for each image.
-        The first list contains the positive elements that were selected,
-        and the second list the negative example.
+            pos_idx (list[tensor])  [img_batch, num_anchors]
+            neg_idx (list[tensor])  [img_batch, num_anchors]
+            维度与matched_idxs相同, 采样到的anchor被设置成了1, 未采样的anchor设置为0
         """
         pos_idx = []
         neg_idx = []

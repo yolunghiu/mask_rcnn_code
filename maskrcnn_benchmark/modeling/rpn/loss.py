@@ -30,11 +30,11 @@ class RPNLossComputation(object):
         self.discard_cases = ['not_visibility', 'between_thresholds']
 
     def match_targets_to_anchors(self, anchor, target, copied_fields=[]):
-        """
-        :param anchor: 一张图片上的所有anchor, boxlist对象  Nx4
-        :param target: 一张图片上的所有gt_box, boxlist对象  Mx4
+        """根据预测值和真实值之间的IoU, 将预测值映射到真实值, 返回每个预测框对应的真实框
+        :param anchor: 一张图片上的所有anchor, boxlist对象  N(num_anchors)x4
+        :param target: 一张图片上的所有gt_box, boxlist对象  M(num_gt)x4
 
-        :return matched_targets: boxlist对象, Nx4, 代表N个anchor对应的gt_box
+        :return matched_targets: boxlist对象, Nx4, 代表N个prediction anchor对应的gt_box
         """
         # 计算匹配质量矩阵(IoU), M(gt) x N(predict)
         match_quality_matrix = boxlist_iou(target, anchor)
@@ -53,19 +53,36 @@ class RPNLossComputation(object):
         return matched_targets
 
     def prepare_targets(self, anchors, targets):
+        """计算真实的平移和缩放值
+        :param anchors: 预测框 list[Boxlist]
+        :param targets: 真实框 list[Boxlist]
+            上面两个参数维度都是img_batch
+        
+        :return:
+            labels: fg,bg,discard list[Tensor] [img_batch, num_anchors]
+            regression_targets: [t_x, t_y, t_w, t_h] list[Tensor]  [img_batch, num_anchors, 4]
+        """
+        # list中每个元素是一个N维tensor, 取值范围是[-1,0,1], -1代表discard, 0代表bg, 1代表fg
         labels = []
+
+        # list中每个元素是Nx4的tensor, 代表[t_x, t_y, t_w, t_h], 实际的平移和缩放值
         regression_targets = []
 
         for anchors_per_image, targets_per_image in zip(anchors, targets):
+            # 每个预测的anchor对应的gt_box    Nx4
             matched_targets = self.match_targets_to_anchors(
                 anchors_per_image, targets_per_image, self.copied_fields
             )
 
+            # 每个预测的anchor对应的gt_box的label    N维
             matched_idxs = matched_targets.get_field("matched_idxs")
+
+            # N维tensor, 只有0,1两个值, 1的位置代表该位置有匹配到的gt_box
             labels_per_image = self.generate_labels_func(matched_targets)
             labels_per_image = labels_per_image.to(dtype=torch.float32)
 
             # Background (negative examples)
+            # matched_idxs=-1 的位置为背景, 把label设置为0
             bg_indices = matched_idxs == Matcher.BELOW_LOW_THRESHOLD
             labels_per_image[bg_indices] = 0
 
@@ -78,7 +95,8 @@ class RPNLossComputation(object):
                 inds_to_discard = matched_idxs == Matcher.BETWEEN_THRESHOLDS
                 labels_per_image[inds_to_discard] = -1
 
-            # compute regression targets
+            # 第一个参数指的是每个预测的anchor对于的gt_box, 第二个参数指的是预测的anchor
+            # 返回值是RCNN论文中的 [t_x, t_y, t_w, t_h]
             regression_targets_per_image = self.box_coder.encode(
                 matched_targets.bbox, anchors_per_image.bbox
             )
@@ -91,26 +109,32 @@ class RPNLossComputation(object):
     def __call__(self, anchors, objectness, box_regression, targets):
         """
         Arguments:
-            anchors (list[BoxList])
-            objectness (list[Tensor])
-            box_regression (list[Tensor])
-            targets (list[BoxList])
+            anchors (list[list[BoxList]]), 第一个维度是img_batch, 第二个维度是level
+                每个level的anchor是一个BoxList对象
+            objectness (list[Tensor]), 第一个维度是level
+            box_regression (list[Tensor]), 第一个维度是level
+            targets (list[BoxList]), 第一个维度是img_batch
 
         Returns:
             objectness_loss (Tensor)
             box_loss (Tensor)
         """
 
-        # anchors中每一张图片的所有anchors是一个list, list中包含了所有level的boxlist对象
-        # 这里把每张图片所有level的boxlist合并成一个
+        # anchors: [num_imgs, (x)num_levels(个boxlist)] --> [num_imgs(个boxlist),]
+        # 即将batch中每张图片各个level的boxlist对象合并成一个
         anchors = [cat_boxlist(anchors_per_image) for anchors_per_image in anchors]
 
+        # labels: fg,bg,discard  [img_batch, num_anchors]
+        # regression_targets: t_x,t_y,t_w,t_h  [img_batch, num_anchors, 4]
         labels, regression_targets = self.prepare_targets(anchors, targets)
 
+        # 从所有预测值中随机采样一个batch的正负样本  [img_batch, num_anchors]
         sampled_pos_inds, sampled_neg_inds = self.fg_bg_sampler(labels)
+        # 把一个batch中所有图片的正负样本展开成一维向量  [img_batch * num_anchors, ]
         sampled_pos_inds = torch.nonzero(torch.cat(sampled_pos_inds, dim=0)).squeeze(1)
         sampled_neg_inds = torch.nonzero(torch.cat(sampled_neg_inds, dim=0)).squeeze(1)
 
+        # [img_batch*num_anchors*2,]
         sampled_inds = torch.cat([sampled_pos_inds, sampled_neg_inds], dim=0)
 
         objectness, box_regression = \
@@ -138,7 +162,9 @@ class RPNLossComputation(object):
 # This function should be overwritten in RetinaNet
 def generate_rpn_labels(matched_targets):
     matched_idxs = matched_targets.get_field("matched_idxs")
+    # 匹配到gt_box的anchor, 该位置设置为1, 其余位置(-1,-2)为0
     labels_per_image = matched_idxs >= 0
+
     return labels_per_image
 
 
