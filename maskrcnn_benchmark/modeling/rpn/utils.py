@@ -21,13 +21,15 @@ def permute_and_flatten(layer, N, A, C, H, W):
 
 
 def concat_box_prediction_layers(box_cls, box_regression):
+    """将box_cls和box_regression由"按level组织"变为"按image组织"
+    :param box_cls: 第一个维度是level
+    :param box_regression: 第一个维度是level
+    """
     box_cls_flattened = []
     box_regression_flattened = []
 
-    # for each feature level, permute the outputs to make them be in the
-    # same format as the labels. Note that the labels are computed for
-    # all feature levels concatenated, so we keep the same representation
-    # for the objectness and the box_regression
+    # box_cls: [[num_img, num_anchors, H, W], ...]
+    # box_regression: [[num_img, 4*num_anchors, H, W], ...]
     for box_cls_per_level, box_regression_per_level in zip(box_cls, box_regression):
         N, AxC, H, W = box_cls_per_level.shape
         Ax4 = box_regression_per_level.shape[1]
@@ -45,6 +47,9 @@ def concat_box_prediction_layers(box_cls, box_regression):
     # concatenate on the first dimension (representing the feature levels), to
     # take into account the way the labels were generated (with all feature maps
     # being concatenated as well)
+    # [N,all_anchors,C] --> [N*all_anchors,C(1)]
     box_cls = cat(box_cls_flattened, dim=1).reshape(-1, C)
+    # [N,all_anchors,4] --> [N*all_anchors,4]
     box_regression = cat(box_regression_flattened, dim=1).reshape(-1, 4)
+
     return box_cls, box_regression

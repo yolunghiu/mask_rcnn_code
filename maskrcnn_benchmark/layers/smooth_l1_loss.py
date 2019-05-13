@@ -1,12 +1,13 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
 
 
-# TODO maybe push this to nn?
 def smooth_l1_loss(input, target, beta=1. / 9, size_average=True):
     """
-    very similar to the smooth_l1_loss from pytorch, but with
-    the extra beta parameter
+    Smooth l1 loss:
+        L1 = 0.5 * x**2, |x| < 1
+             |x| - 0.5 , others
+
+    这里加了个参数beta
     """
     n = torch.abs(input - target)
     cond = n < beta

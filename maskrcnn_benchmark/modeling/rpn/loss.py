@@ -130,19 +130,31 @@ class RPNLossComputation(object):
 
         # 从所有预测值中随机采样一个batch的正负样本  [img_batch, num_anchors]
         sampled_pos_inds, sampled_neg_inds = self.fg_bg_sampler(labels)
-        # 把一个batch中所有图片的正负样本展开成一维向量  [img_batch * num_anchors, ]
+
+        # 处理之前sampled_pos_inds和sampled_neg_inds: [img_batch, num_anchors], 可以看成二维矩阵
+        #   矩阵中每一行都是0和1两种值, 1的位置代表采样到的样本数量, 这两个变量同一行中1的数量相加之后是
+        #   batch_size_per_image, 即从同一张图片中采样batch_size_per_image个正负样本
+        # 处理之后sampled_pos_inds和sampled_neg_inds: [all_sampled_inds], 处理过程是首先把img_batch
+        #   展开, 展开后共有img_batch*num_anchors个数, 然后取出这些数中非0元素的索引值,
+        #   取值范围是0~ img_batch*num_anchors-1, 后面对labels和regression_targets同样将img_batch展
+        #   开, 这样就可以使用这两个索引变量直接进行取值
         sampled_pos_inds = torch.nonzero(torch.cat(sampled_pos_inds, dim=0)).squeeze(1)
         sampled_neg_inds = torch.nonzero(torch.cat(sampled_neg_inds, dim=0)).squeeze(1)
 
-        # [img_batch*num_anchors*2,]
+        # [img_batch*batch_size_per_image]
         sampled_inds = torch.cat([sampled_pos_inds, sampled_neg_inds], dim=0)
 
+        # objectness: [[num_img, num_anchors, H, W], ...] --> [img_batch*num_anchors, 1]
+        # box_regression: [[num_img, 4*num_anchors, H, W], ...] --> [img_batch*num_anchors, 4]
         objectness, box_regression = \
             concat_box_prediction_layers(objectness, box_regression)
 
+        # [img_batch*num_anchors]
         objectness = objectness.squeeze()
 
+        # [img_batch, num_anchors] --> [img_batch*num_anchors]
         labels = torch.cat(labels, dim=0)
+        # [img_batch, num_anchors, 4] --> [img_batch*num_anchors, 4]
         regression_targets = torch.cat(regression_targets, dim=0)
 
         box_loss = smooth_l1_loss(
@@ -152,6 +164,7 @@ class RPNLossComputation(object):
             size_average=False,
         ) / (sampled_inds.numel())
 
+        # sigmod结合交叉熵进行fg/bg二分类的损失函数
         objectness_loss = F.binary_cross_entropy_with_logits(
             objectness[sampled_inds], labels[sampled_inds]
         )
