@@ -126,6 +126,7 @@ class AnchorGenerator(nn.Module):
             # 广播机制, (n, 1, 4) + (1, m, 4) --> (n, m, 4)
             # 共有 n 个 ceil, 每个 ceil 上设置 m 个 anchor
             anchors.append(
+                # (n, m, 4) --> (n*m, 4)
                 (shifts.view(-1, 1, 4) + base_anchors.view(1, -1, 4)).reshape(-1, 4)
             )
 
@@ -307,7 +308,6 @@ def _generate_anchors(base_size, scales, aspect_ratios):
     scales: size/stride, 要生成的 anchors 映射到特征图上的大小
     aspect_ratios: 高宽比
     """
-
     # base_anchor, 这四个坐标值都是相对于原图尺寸的
     anchor = np.array([1, 1, base_size, base_size], dtype=np.float) - 1
 

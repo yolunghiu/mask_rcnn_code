@@ -1,4 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -134,14 +133,13 @@ class RPNModule(torch.nn.Module):
 
         self.cfg = cfg.clone()
 
-        # 创建 anchor_generator.py 中的 AnchorGenerator 对象
+        # 创建AnchorGenerator对象, 用于在特征图上生成anchor
         anchor_generator = make_anchor_generator(cfg)
 
-        # cfg.MODEL.RPN.RPN_HEAD: "SingleConvRPNHead"
-        # 这是 RPNHead 对象在 registry.RPN_HEADS 中注册的名字, 它的值就是 RPNHead 对象
+        # 获取RPNHead类的函数对象
         rpn_head = registry.RPN_HEADS[cfg.MODEL.RPN.RPN_HEAD]
 
-        # in_channels 在 FPN 中为256, 也就是用来做检测的特征图的卷积核数量
+        # 创建RPNHead对象, in_channels 在 FPN 中为256, 也就是用来做检测的特征图的卷积核数量
         head = rpn_head(
             cfg, in_channels, anchor_generator.num_anchors_per_location()[0]
         )
@@ -168,7 +166,7 @@ class RPNModule(torch.nn.Module):
             images (ImageList): 一个 batch 的 images
             features (list[Tensor]): 各个 level 的特征图, list 中的每个 Tensor 都是
                 四维的 [N, C, H, W], 第一维是 batch_size
-            targets (list[BoxList): ground-truth boxes present in the image (optional)
+            targets (list[BoxList): 每张图片上的ground-truth boxes
 
         Returns:
             boxes (list[BoxList]): the predicted boxes from the RPN, one BoxList per
@@ -177,12 +175,15 @@ class RPNModule(torch.nn.Module):
                 testing, it is an empty dict.
         """
 
+        # 根据传入的特征图, 使用RPNHead对象直接得到预测结果, 包括置信度和回归值
         # objectness 是置信度, 是一个 list, 第一个维度是 level, 第二个维度是一个 batch 中
         #   当前 level 输出的特征图   [[N, num_anchors, H, W], ...]
         # rpn_box_regression 中每个元素指的是每个 level 特征图的 box 预测值
         #   [[N, 4*num_anchors, H, W], ...]
         objectness, rpn_box_regression = self.head(features)
 
+        # 在每张图片各个level的特征图上生成anchor, 每个boxlist都有个'visibility'属性
+        #   用于标记有效的anchor
         # anchors.shape: (batch_size, num_stages)
         # [[boxlist, boxlist, ...], [boxlist, boxlist, ...], ...]
         anchors = self.anchor_generator(images, features)
@@ -194,19 +195,19 @@ class RPNModule(torch.nn.Module):
 
     def _forward_train(self, anchors, objectness, rpn_box_regression, targets):
         if self.cfg.MODEL.RPN_ONLY:  # 默认为 False
-            # When training an RPN-only model, the loss is determined by the
-            # predicted objectness and rpn_box_regression values and there is
-            # no need to transform the anchors into predicted boxes; this is an
-            # optimization that avoids the unnecessary transformation.
+            # 训练RPN-only模型时, 直接计算rpn loss即可, 无需转换anchors, 训练时用不到
             boxes = anchors
         else:
-            # For end-to-end models, anchors must be transformed into boxes and
-            # sampled into a training batch.
+            # 对于end-to-end模型, 需要将anchors转换成boxes并采样成一个batch进行训练
             with torch.no_grad():
-                # 调用 inference.py 中 RPNPostProcessor 的 forward 方法
+                # inference.py 移除不符合要求的anchor, 进行nms, 在所有anchor中保留
+                # post_nms_top_n个anchor
+                # TODO: 这个boxes变量之后是在哪里用到的?看到的时候回顾一下
                 boxes = self.box_selector_train(
                     anchors, objectness, rpn_box_regression, targets
                 )
+
+        # 计算rpn loss(前景/背景分类损失, box回归损失)
         loss_objectness, loss_rpn_box_reg = self.loss_evaluator(
             anchors, objectness, rpn_box_regression, targets
         )
@@ -214,19 +215,17 @@ class RPNModule(torch.nn.Module):
             "loss_objectness": loss_objectness,
             "loss_rpn_box_reg": loss_rpn_box_reg,
         }
+
         return boxes, losses
 
     def _forward_test(self, anchors, objectness, rpn_box_regression):
         boxes = self.box_selector_test(anchors, objectness, rpn_box_regression)
         if self.cfg.MODEL.RPN_ONLY:
-            # For end-to-end models, the RPN proposals are an intermediate state
-            # and don't bother to sort them in decreasing score order. For RPN-only
-            # models, the proposals are the final output and we return them in
-            # high-to-low confidence order.
             inds = [
                 box.get_field("objectness").sort(descending=True)[1] for box in boxes
             ]
             boxes = [box[ind] for box, ind in zip(boxes, inds)]
+
         return boxes, {}
 
 
