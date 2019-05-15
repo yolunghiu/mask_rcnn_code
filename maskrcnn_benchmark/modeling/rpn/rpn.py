@@ -207,7 +207,8 @@ class RPNModule(torch.nn.Module):
                     anchors, objectness, rpn_box_regression, targets
                 )
 
-        # 计算rpn loss(前景/背景分类损失, box回归损失)
+        # 计算rpn loss(前景/背景分类损失, box回归损失), 损失是通过从所有anchor中采样一个
+        # batch的正负样本并计算这个batch中的损失
         loss_objectness, loss_rpn_box_reg = self.loss_evaluator(
             anchors, objectness, rpn_box_regression, targets
         )
