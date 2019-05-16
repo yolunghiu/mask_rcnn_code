@@ -1,9 +1,8 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
 
 from .box_head.box_head import build_roi_box_head
-from .mask_head.mask_head import build_roi_mask_head
 from .keypoint_head.keypoint_head import build_roi_keypoint_head
+from .mask_head.mask_head import build_roi_mask_head
 
 
 class CombinedROIHeads(torch.nn.ModuleDict):
@@ -30,8 +29,8 @@ class CombinedROIHeads(torch.nn.ModuleDict):
             # optimization: during training, if we share the feature extractor between
             # the box and the mask heads, then we can reuse the features already computed
             if (
-                self.training
-                and self.cfg.MODEL.ROI_MASK_HEAD.SHARE_BOX_FEATURE_EXTRACTOR
+                    self.training
+                    and self.cfg.MODEL.ROI_MASK_HEAD.SHARE_BOX_FEATURE_EXTRACTOR
             ):
                 mask_features = x
             # During training, self.box() will return the unaltered proposals as "detections"
@@ -44,8 +43,8 @@ class CombinedROIHeads(torch.nn.ModuleDict):
             # optimization: during training, if we share the feature extractor between
             # the box and the mask heads, then we can reuse the features already computed
             if (
-                self.training
-                and self.cfg.MODEL.ROI_KEYPOINT_HEAD.SHARE_BOX_FEATURE_EXTRACTOR
+                    self.training
+                    and self.cfg.MODEL.ROI_KEYPOINT_HEAD.SHARE_BOX_FEATURE_EXTRACTOR
             ):
                 keypoint_features = x
             # During training, self.box() will return the unaltered proposals as "detections"
@@ -56,10 +55,9 @@ class CombinedROIHeads(torch.nn.ModuleDict):
 
 
 def build_roi_heads(cfg, in_channels):
-    # individually create the heads, that will be combined together
-    # afterwards
+    # individually create the heads, that will be combined together afterwards
     roi_heads = []
-    if cfg.MODEL.RETINANET_ON:
+    if cfg.MODEL.RETINANET_ON:  # 默认为False
         return []
 
     if not cfg.MODEL.RPN_ONLY:

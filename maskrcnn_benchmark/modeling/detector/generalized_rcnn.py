@@ -53,6 +53,8 @@ class GeneralizedRCNN(nn.Module):
         features = self.backbone(images.tensors)
 
         # 利用 rpn 网络获取 proposals 和相应的 loss
+        # proposal是经过筛选之后保留的post_nms_top_n个anchor, 是一个BoxList列表, 第一维度是img_batch
+        # proposal_losses是二分类损失和box回归损失
         proposals, proposal_losses = self.rpn(images, features, targets)
 
         if self.roi_heads:

@@ -1,15 +1,15 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 from maskrcnn_benchmark.modeling import registry
 from maskrcnn_benchmark.modeling.backbone import resnet
-from maskrcnn_benchmark.modeling.poolers import Pooler
 from maskrcnn_benchmark.modeling.make_layers import group_norm
 from maskrcnn_benchmark.modeling.make_layers import make_fc
+from maskrcnn_benchmark.modeling.poolers import Pooler
 
 
+# Faster RCNN里用的是这个head
 @registry.ROI_BOX_FEATURE_EXTRACTORS.register("ResNet50Conv5ROIFeatureExtractor")
 class ResNet50Conv5ROIFeatureExtractor(nn.Module):
     def __init__(self, config, in_channels):
@@ -46,6 +46,7 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
         return x
 
 
+# FPN论文里用的是这个head
 @registry.ROI_BOX_FEATURE_EXTRACTORS.register("FPN2MLPFeatureExtractor")
 class FPN2MLPFeatureExtractor(nn.Module):
     """
@@ -55,23 +56,26 @@ class FPN2MLPFeatureExtractor(nn.Module):
     def __init__(self, cfg, in_channels):
         super(FPN2MLPFeatureExtractor, self).__init__()
 
-        resolution = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
+        resolution = cfg.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION  # 7
+        # (0.25, 0.125, 0.0625, 0.03125), 分别对应P2~P5降采样的倍数
         scales = cfg.MODEL.ROI_BOX_HEAD.POOLER_SCALES
-        sampling_ratio = cfg.MODEL.ROI_BOX_HEAD.POOLER_SAMPLING_RATIO
+        sampling_ratio = cfg.MODEL.ROI_BOX_HEAD.POOLER_SAMPLING_RATIO  # 2
         pooler = Pooler(
             output_size=(resolution, resolution),
             scales=scales,
             sampling_ratio=sampling_ratio,
         )
         input_size = in_channels * resolution ** 2
-        representation_size = cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM
-        use_gn = cfg.MODEL.ROI_BOX_HEAD.USE_GN
+        representation_size = cfg.MODEL.ROI_BOX_HEAD.MLP_HEAD_DIM  # 1024
+        use_gn = cfg.MODEL.ROI_BOX_HEAD.USE_GN  # False
+
         self.pooler = pooler
         self.fc6 = make_fc(input_size, representation_size, use_gn)
         self.fc7 = make_fc(representation_size, representation_size, use_gn)
         self.out_channels = representation_size
 
     def forward(self, x, proposals):
+        # x: 各个level的feature map
         x = self.pooler(x, proposals)
         x = x.view(x.size(0), -1)
 
@@ -124,7 +128,7 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
             xconvs.append(nn.ReLU(inplace=True))
 
         self.add_module("xconvs", nn.Sequential(*xconvs))
-        for modules in [self.xconvs,]:
+        for modules in [self.xconvs, ]:
             for l in modules.modules():
                 if isinstance(l, nn.Conv2d):
                     torch.nn.init.normal_(l.weight, std=0.01)
@@ -146,6 +150,7 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
 
 def make_roi_box_feature_extractor(cfg, in_channels):
     func = registry.ROI_BOX_FEATURE_EXTRACTORS[
+        # configs/e2e_mask_rcnn_R_50_FPN_1x.yaml --> FPN2MLPFeatureExtractor
         cfg.MODEL.ROI_BOX_HEAD.FEATURE_EXTRACTOR
     ]
     return func(cfg, in_channels)

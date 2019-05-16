@@ -1,5 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-import torch
 from torch import nn
 from torch.autograd import Function
 from torch.autograd.function import once_differentiable
@@ -44,6 +42,7 @@ class _ROIAlign(Function):
         return grad_input, None, None, None, None
 
 
+# https://pytorch.org/docs/stable/notes/autograd.html?highlight=apply
 roi_align = _ROIAlign.apply
 
 

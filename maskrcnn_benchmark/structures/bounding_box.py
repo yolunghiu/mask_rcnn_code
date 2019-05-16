@@ -227,6 +227,7 @@ class BoxList(object):
         return self
 
     def area(self):
+        # 计算所有box的面积
         box = self.bbox
         if self.mode == "xyxy":
             TO_REMOVE = 1

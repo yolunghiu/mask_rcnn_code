@@ -22,8 +22,8 @@ class LevelMapper(object):
             canonical_level (int)
             eps (float)
         """
-        self.k_min = k_min
-        self.k_max = k_max
+        self.k_min = k_min  # 2
+        self.k_max = k_max  # 5
         self.s0 = canonical_scale
         self.lvl0 = canonical_level
         self.eps = eps
@@ -37,8 +37,11 @@ class LevelMapper(object):
         s = torch.sqrt(cat([boxlist.area() for boxlist in boxlists]))
 
         # Eqn.(1) in FPN paper
+        # 根据这个公式计算每个RoI的FPN Level
         target_lvls = torch.floor(self.lvl0 + torch.log2(s / self.s0 + self.eps))
         target_lvls = torch.clamp(target_lvls, min=self.k_min, max=self.k_max)
+
+        # 从0开始, 最大是3
         return target_lvls.to(torch.int64) - self.k_min
 
 
@@ -53,7 +56,7 @@ class Pooler(nn.Module):
     """
 
     def __init__(self, output_size, scales, sampling_ratio):
-        """
+        """ 7 (0.25, 0.125, 0.0625, 0.03125) 2
         Arguments:
             output_size (list[tuple[int]] or list[int]): output size for the pooled region
             scales (list[float]): scales for each Pooler
@@ -69,15 +72,23 @@ class Pooler(nn.Module):
             )
         self.poolers = nn.ModuleList(poolers)
         self.output_size = output_size
+
         # get the levels in the feature map by leveraging the fact that the network always
         # downsamples by a factor of 2 at each level.
-        lvl_min = -torch.log2(torch.tensor(scales[0], dtype=torch.float32)).item()
-        lvl_max = -torch.log2(torch.tensor(scales[-1], dtype=torch.float32)).item()
+        lvl_min = -torch.log2(torch.tensor(scales[0], dtype=torch.float32)).item()  # 2
+        lvl_max = -torch.log2(torch.tensor(scales[-1], dtype=torch.float32)).item()  # 5
         self.map_levels = LevelMapper(lvl_min, lvl_max)
 
     def convert_to_roi_format(self, boxes):
+        """
+        boxes (list[BoxList])
+        """
+        # 将所有level的anchor拼接起来, Nx4
         concat_boxes = cat([b.bbox for b in boxes], dim=0)
+
         device, dtype = concat_boxes.device, concat_boxes.dtype
+
+        # [0, 0, 0, ..., 1, 1, ..., 2, 2, ..., ..., level-1, level-1, ...], Nx1
         ids = cat(
             [
                 torch.full((len(b), 1), i, dtype=dtype, device=device)
@@ -85,7 +96,13 @@ class Pooler(nn.Module):
             ],
             dim=0,
         )
+
+        # Nx5, [    [id1, x1, y1, x2, y2],
+        #           [id2, x1, y1, x2, y2],
+        #           ...
+        #      ]
         rois = torch.cat([ids, concat_boxes], dim=1)
+
         return rois
 
     def forward(self, x, boxes):
@@ -113,6 +130,8 @@ class Pooler(nn.Module):
             dtype=dtype,
             device=device,
         )
+
+        # pooler是ROIAlign对象
         for level, (per_level_feature, pooler) in enumerate(zip(x, self.poolers)):
             idx_in_level = torch.nonzero(levels == level).squeeze(1)
             rois_per_level = rois[idx_in_level]
