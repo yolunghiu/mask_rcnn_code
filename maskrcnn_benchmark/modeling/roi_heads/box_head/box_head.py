@@ -14,6 +14,7 @@ class ROIBoxHead(torch.nn.Module):
 
     def __init__(self, cfg, in_channels):
         super(ROIBoxHead, self).__init__()
+
         # 创建FPN2MLPFeatureExtractor对象
         self.feature_extractor = make_roi_box_feature_extractor(cfg, in_channels)
 
@@ -24,7 +25,7 @@ class ROIBoxHead(torch.nn.Module):
     def forward(self, features, proposals, targets=None):
         """
         Arguments:
-            features (list[Tensor]): feature-maps from possibly several levels
+            features (list[Tensor]): feature maps from possibly several levels
             proposals (list[BoxList]): proposal boxes
             targets (list[BoxList], optional): the ground-truth targets.
 
@@ -63,9 +64,4 @@ class ROIBoxHead(torch.nn.Module):
 
 
 def build_roi_box_head(cfg, in_channels):
-    """
-    Constructs a new box head.
-    By default, uses ROIBoxHead, but if it turns out not to be enough, just register a new class
-    and make it a parameter in the config
-    """
     return ROIBoxHead(cfg, in_channels)

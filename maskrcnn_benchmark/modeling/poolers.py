@@ -1,4 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -9,8 +8,7 @@ from .utils import cat
 
 
 class LevelMapper(object):
-    """Determine which FPN level each RoI in a set of RoIs should map to based
-    on the heuristic in the FPN paper.
+    """根据FPN论文中的公式计算每个RoI属于哪个FPN feature map level
     """
 
     def __init__(self, k_min, k_max, canonical_scale=224, canonical_level=4, eps=1e-6):
@@ -30,8 +28,8 @@ class LevelMapper(object):
 
     def __call__(self, boxlists):
         """
-        Arguments:
-            boxlists (list[BoxList])
+        :param boxlists (list[BoxList])
+        :return target_lvls (Tensor): 一维tensor, 标记每个box输入哪个level
         """
         # Compute level ids
         s = torch.sqrt(cat([boxlist.area() for boxlist in boxlists]))
@@ -48,11 +46,6 @@ class LevelMapper(object):
 class Pooler(nn.Module):
     """
     Pooler for Detection with or without FPN.
-    It currently hard-code ROIAlign in the implementation,
-    but that can be made more generic later on.
-    Also, the requirement of passing the scales is not strictly necessary, as they
-    can be inferred from the size of the feature map / size of original image,
-    which is available thanks to the BoxList.
     """
 
     def __init__(self, output_size, scales, sampling_ratio):
@@ -80,7 +73,7 @@ class Pooler(nn.Module):
         self.map_levels = LevelMapper(lvl_min, lvl_max)
 
     def convert_to_roi_format(self, boxes):
-        """
+        """把要进行池化操作的box进行格式转换
         boxes (list[BoxList])
         """
         # 将所有level的anchor拼接起来, Nx4
@@ -107,34 +100,40 @@ class Pooler(nn.Module):
 
     def forward(self, x, boxes):
         """
-        Arguments:
-            x (list[Tensor]): feature maps for each level
-            boxes (list[BoxList]): boxes to be used to perform the pooling operation.
-        Returns:
-            result (Tensor)
+        :param x (list[Tensor]): 各个level的特征图
+        :param boxes (list[BoxList]): 要进行池化操作的boxes
+        :return result (Tensor[N, 256, 7, 7])
         """
         num_levels = len(self.poolers)
+
+        # Nx5, 在每个box之前添加了对应feature map level的索引值
+        # 这个level指的是生成的anchor所处的特征图的level
         rois = self.convert_to_roi_format(boxes)
         if num_levels == 1:
             return self.poolers[0](x[0], rois)
 
+        # 一维tensor, 长度为所有box的数量, rois和levels的索引值是一一对应的
+        # 这个level指的是每个预测的roi根据area来映射到不同level的特征图进行后续处理
         levels = self.map_levels(boxes)
 
-        num_rois = len(rois)
-        num_channels = x[0].shape[1]
-        output_size = self.output_size[0]
+        num_rois = len(rois)  # N
+        num_channels = x[0].shape[1]  # 256
+        output_size = self.output_size[0]  # 7
 
         dtype, device = x[0].dtype, x[0].device
-        result = torch.zeros(
-            (num_rois, num_channels, output_size, output_size),
-            dtype=dtype,
-            device=device,
-        )
+        result = torch.zeros((num_rois, num_channels, output_size, output_size),
+                             dtype=dtype, device=device)
 
-        # pooler是ROIAlign对象
+        # level是当前特征图的level, pooler是ROIAlign对象
         for level, (per_level_feature, pooler) in enumerate(zip(x, self.poolers)):
+            # 所有proposal根据area计算出应该属于哪个FPN level, 这里找出所有
+            # 计算结果中属于当前level特征图的proposal
             idx_in_level = torch.nonzero(levels == level).squeeze(1)
+
+            # 属于当前level的roi, 注意选出的roi第一列是任意值, 这里的level指的是映射
+            # 之后的level
             rois_per_level = rois[idx_in_level]
+
             result[idx_in_level] = pooler(per_level_feature, rois_per_level)
 
         return result

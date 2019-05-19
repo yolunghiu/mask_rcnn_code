@@ -14,36 +14,46 @@ struct PreCalc {
   T w4;
 };
 
+// 获得双线性插值采样点周围四个坐标的索引以及对应的权重
 template <typename T>
 void pre_calc_for_bilinear_interpolate(
-    const int height,
-    const int width,
-    const int pooled_height,
-    const int pooled_width,
-    const int iy_upper,
-    const int ix_upper,
-    T roi_start_h,
-    T roi_start_w,
-    T bin_size_h,
-    T bin_size_w,
-    int roi_bin_grid_h,
-    int roi_bin_grid_w,
-    std::vector<PreCalc<T>>& pre_calc) {
+    const int height,           // feature map height
+    const int width,            // feature map width
+    const int pooled_height,    // 7
+    const int pooled_width,     // 7
+    const int iy_upper,         // roi_bin_grid_h  2
+    const int ix_upper,         // roi_bin_grid_w  2
+    T roi_start_h,               // y1坐标经过缩放之后的值
+    T roi_start_w,               // x1坐标经过缩放之后的值
+    T bin_size_h,                // 每个bin的高度
+    T bin_size_w,                // 每个bin的宽度
+    int roi_bin_grid_h,          // 2 将每个bin划分成2x2大小的grid
+    int roi_bin_grid_w,          // 2
+    std::vector<PreCalc<T>>& pre_calc   // vector中元素个数为一个roi被划分成的grid数
+    ) {
   int pre_calc_index = 0;
-  for (int ph = 0; ph < pooled_height; ph++) {
-    for (int pw = 0; pw < pooled_width; pw++) {
-      for (int iy = 0; iy < iy_upper; iy++) {
+  for (int ph = 0; ph < pooled_height; ph++) {  // 7
+    for (int pw = 0; pw < pooled_width; pw++) {  // 7
+      for (int iy = 0; iy < iy_upper; iy++) {  // 2
+        // roi_start_h是当前roi在特征图上的左上角纵坐标, bin_size_h是每个bin的高度,
+        // ph * bin_size_h代表在当前bin之前的所有bin的高度
+        // roi_start_h + ph * bin_size_h代表当前bin的左上角纵坐标
+        // roi_bin_grid_h=2, bin_size_h / static_cast<T>(roi_bin_grid_h)得到的是bin中每个element的高度
+        // 注: 一个bin被划分成了2x2的grid, 也就是4个element
+        // 当前bin左上角纵坐标 + 0.5*element的高度 代表 第一行element中心点纵坐标
+        // 当前bin左上角纵坐标 + 1.5*element的高度 代表 第二行element中心点纵坐标
         const T yy = roi_start_h + ph * bin_size_h +
-            static_cast<T>(iy + .5f) * bin_size_h /
-                static_cast<T>(roi_bin_grid_h); // e.g., 0.5, 1.5
-        for (int ix = 0; ix < ix_upper; ix++) {
+            static_cast<T>(iy + .5f) * bin_size_h / static_cast<T>(roi_bin_grid_h); // e.g., 0.5, 1.5
+
+        for (int ix = 0; ix < ix_upper; ix++) {  // 2
+          // 同理, 这里求出的分别是第一列和第二列element中心点横坐标
           const T xx = roi_start_w + pw * bin_size_w +
-              static_cast<T>(ix + .5f) * bin_size_w /
-                  static_cast<T>(roi_bin_grid_w);
+              static_cast<T>(ix + .5f) * bin_size_w / static_cast<T>(roi_bin_grid_w);
 
           T x = xx;
           T y = yy;
           // deal with: inverse elements are out of feature map boundary
+          // TODO: 什么时候会出现这种情况?
           if (y < -1.0 || y > height || x < -1.0 || x > width) {
             // empty
             PreCalc<T> pc;
@@ -104,45 +114,59 @@ void pre_calc_for_bilinear_interpolate(
           pre_calc[pre_calc_index] = pc;
 
           pre_calc_index += 1;
-        }
-      }
-    }
-  }
+        }  //  for: roi_bin_grid_w(2)
+      }  // for: roi_bin_grid_h(2)
+    }  // for: pooled_width
+  }  // for: pooled_height
 }
 
 template <typename T>
 void ROIAlignForward_cpu_kernel(
+    // num_rois * pooled_height * pooled_width * channels
     const int nthreads,
+    // feature map (N, C, H, W)
     const T* bottom_data,
+    // 1/4 || 1/8 || 1/16 || 1/32
     const T& spatial_scale,
-    const int channels,
-    const int height,
-    const int width,
-    const int pooled_height,
-    const int pooled_width,
-    const int sampling_ratio,
-    const T* bottom_rois,
+    const int channels,  // C
+    const int height,    // H
+    const int width,     // W
+    const int pooled_height,  // 7
+    const int pooled_width,   // 7
+    const int sampling_ratio, // 2
+    const T* bottom_rois,     // rois.data, 指针类型, 应该指向数组首地址
     //int roi_cols,
-    T* top_data) {
-  //AT_ASSERT(roi_cols == 4 || roi_cols == 5);
+    // output.data (num_rois, channels, pooled_height, pooled_width)
+    T* top_data
+    ) {
+  // 这里的T对应到python中指的应该是float型的数
+
+  // 这个指的是传入的每个roi都有5个值, 第一个值是该roi所处特征图的编号
+  // 后四个值是坐标
   int roi_cols = 5;
 
+  // roi的数量
   int n_rois = nthreads / channels / pooled_width / pooled_height;
+
   // (n, c, ph, pw) is an element in the pooled output
   // can be parallelized using omp
   // #pragma omp parallel for num_threads(32)
   for (int n = 0; n < n_rois; n++) {
     int index_n = n * channels * pooled_width * pooled_height;
 
-    // roi could have 4 or 5 columns
+    // 当前(第n个)roi在rois数组中的首地址
     const T* offset_bottom_rois = bottom_rois + n * roi_cols;
+
     int roi_batch_ind = 0;
     if (roi_cols == 5) {
+      // 这个变量保存当前roi所处的level编号, 这里的level指的是映射之前的level
       roi_batch_ind = offset_bottom_rois[0];
       offset_bottom_rois++;
     }
 
     // Do not using rounding; this implementation detail is critical
+    // 每个roi中的四个坐标值都是相对于原图的坐标, 这里根据当前level特征图的缩放比例\
+    // 对坐标进行缩放
     T roi_start_w = offset_bottom_rois[0] * spatial_scale;
     T roi_start_h = offset_bottom_rois[1] * spatial_scale;
     T roi_end_w = offset_bottom_rois[2] * spatial_scale;
@@ -152,13 +176,16 @@ void ROIAlignForward_cpu_kernel(
     // T roi_end_w = round(offset_bottom_rois[2] * spatial_scale);
     // T roi_end_h = round(offset_bottom_rois[3] * spatial_scale);
 
-    // Force malformed ROIs to be 1x1
+    // Force malformed(畸形的) ROIs to be 1x1
+    // roi在特征图上的宽度和高度
     T roi_width = std::max(roi_end_w - roi_start_w, (T)1.);
     T roi_height = std::max(roi_end_h - roi_start_h, (T)1.);
+    // 将该roi划分成pooled_height*pooled_width大小的grid, 下面是每个bin的大小
     T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
     T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
 
     // We use roi_bin_grid to sample the grid and mimic integral
+    // 将每个bin划分成2*2大小的grid
     int roi_bin_grid_h = (sampling_ratio > 0)
         ? sampling_ratio
         : ceil(roi_height / pooled_height); // e.g., = 2
@@ -170,8 +197,11 @@ void ROIAlignForward_cpu_kernel(
 
     // we want to precalculate indeces and weights shared by all chanels,
     // this is the key point of optimiation
+    // vector中的元素是PreCalc<T>类型, pre_calc中共有
+    // roi_bin_grid_h * roi_bin_grid_w * pooled_width * pooled_height个元素
     std::vector<PreCalc<T>> pre_calc(
         roi_bin_grid_h * roi_bin_grid_w * pooled_width * pooled_height);
+
     pre_calc_for_bilinear_interpolate(
         height,
         width,
@@ -187,20 +217,25 @@ void ROIAlignForward_cpu_kernel(
         roi_bin_grid_w,
         pre_calc);
 
-      for (int c = 0; c < channels; c++) {
+    for (int c = 0; c < channels; c++) {
+      // 当前roi每个channel池化之后特征图的索引初始值(输出)
       int index_n_c = index_n + c * pooled_width * pooled_height;
+
+      // bottom_data是指向特征图的指针
       const T* offset_bottom_data =
           bottom_data + (roi_batch_ind * channels + c) * height * width;
       int pre_calc_index = 0;
 
-      for (int ph = 0; ph < pooled_height; ph++) {
-        for (int pw = 0; pw < pooled_width; pw++) {
+      for (int ph = 0; ph < pooled_height; ph++) {  // 7
+        for (int pw = 0; pw < pooled_width; pw++) {  // 7
           int index = index_n_c + ph * pooled_width + pw;
 
           T output_val = 0.;
-          for (int iy = 0; iy < roi_bin_grid_h; iy++) {
-            for (int ix = 0; ix < roi_bin_grid_w; ix++) {
+          for (int iy = 0; iy < roi_bin_grid_h; iy++) {  // 2
+            for (int ix = 0; ix < roi_bin_grid_w; ix++) {  // 2
               PreCalc<T> pc = pre_calc[pre_calc_index];
+
+              // offset_bottom_data 指向输入特征图的指针
               output_val += pc.w1 * offset_bottom_data[pc.pos1] +
                   pc.w2 * offset_bottom_data[pc.pos2] +
                   pc.w3 * offset_bottom_data[pc.pos3] +
@@ -211,6 +246,7 @@ void ROIAlignForward_cpu_kernel(
           }
           output_val /= count;
 
+          // 指向output.data的指针 (num_rois, channels, pooled_height, pooled_width)
           top_data[index] = output_val;
         } // for pw
       } // for ph

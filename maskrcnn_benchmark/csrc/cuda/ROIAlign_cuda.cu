@@ -256,17 +256,17 @@ __global__ void RoIAlignBackwardFeature(const int nthreads, const T* top_diff,
 
 at::Tensor ROIAlign_forward_cuda(const at::Tensor& input,
                                  const at::Tensor& rois,
-                                 const float spatial_scale,
-                                 const int pooled_height,
-                                 const int pooled_width,
-                                 const int sampling_ratio) {
+                                 const float spatial_scale,// (1/4, ...)
+                                 const int pooled_height,  // 7
+                                 const int pooled_width,   // 7
+                                 const int sampling_ratio  // 2) {
   AT_ASSERTM(input.type().is_cuda(), "input must be a CUDA tensor");
   AT_ASSERTM(rois.type().is_cuda(), "rois must be a CUDA tensor");
 
-  auto num_rois = rois.size(0);
-  auto channels = input.size(1);
-  auto height = input.size(2);
-  auto width = input.size(3);
+  auto num_rois = rois.size(0);   // roi的数量
+  auto channels = input.size(1);  // feature map的通道数
+  auto height = input.size(2);    // feature map的H
+  auto width = input.size(3);     // feature map的W
 
   auto output = at::empty({num_rois, channels, pooled_height, pooled_width}, input.options());
   auto output_size = num_rois * pooled_height * pooled_width * channels;
@@ -280,6 +280,11 @@ at::Tensor ROIAlign_forward_cuda(const at::Tensor& input,
     return output;
   }
 
+  // ATEN 提供了接口函数 AT_DISPATCH_FLOATING_TYPES, 这个函数接收三个参数
+  // 第一个参数是输入数据的源类型
+  // 第二个参数是操作的标识符（用于报错显示）
+  // 第三个参数是一个匿名函数
+  // 在匿名函数运行结束后, AT_DISPATCH_FLOATING_TYPES 会将 Float 数组转化为目标类型（运行中的实际类型）数组
   AT_DISPATCH_FLOATING_TYPES(input.type(), "ROIAlign_forward", [&] {
     RoIAlignForward<scalar_t><<<grid, block, 0, stream>>>(
          output_size,
@@ -297,6 +302,19 @@ at::Tensor ROIAlign_forward_cuda(const at::Tensor& input,
   THCudaCheck(cudaGetLastError());
   return output;
 }
+
+/* 关于匿名函数
+
+    [](int x, int y) { return x + y; }
+    [配置](参数){程序体}
+
+    [&](int x, int y) { return x + y; }
+    参数按引用传递
+
+    [=](int x, int y) { return x + y; }
+    参数按值传递
+
+*/
 
 // TODO remove the dependency on input and use instead its sizes -> save memory
 at::Tensor ROIAlign_backward_cuda(const at::Tensor& grad,
