@@ -23,12 +23,12 @@ void pre_calc_for_bilinear_interpolate(
     const int pooled_width,     // 7
     const int iy_upper,         // roi_bin_grid_h  2
     const int ix_upper,         // roi_bin_grid_w  2
-    T roi_start_h,               // y1坐标经过缩放之后的值
-    T roi_start_w,               // x1坐标经过缩放之后的值
-    T bin_size_h,                // 每个bin的高度
-    T bin_size_w,                // 每个bin的宽度
-    int roi_bin_grid_h,          // 2 将每个bin划分成2x2大小的grid
-    int roi_bin_grid_w,          // 2
+    T roi_start_h,              // y1坐标经过缩放之后的值
+    T roi_start_w,              // x1坐标经过缩放之后的值
+    T bin_size_h,               // 每个bin的高度
+    T bin_size_w,               // 每个bin的宽度
+    int roi_bin_grid_h,         // 2 将每个bin划分成2x2大小的grid
+    int roi_bin_grid_w,         // 2
     std::vector<PreCalc<T>>& pre_calc   // vector中元素个数为一个roi被划分成的grid数
     ) {
   int pre_calc_index = 0;
@@ -82,6 +82,7 @@ void pre_calc_for_bilinear_interpolate(
           int y_high;
           int x_high;
 
+          // 图像的双线性插值只会用相邻的4个点, high-low=1
           if (y_low >= height - 1) {
             y_high = y_low = height - 1;
             y = (T)y_low;
@@ -96,6 +97,8 @@ void pre_calc_for_bilinear_interpolate(
             x_high = x_low + 1;
           }
 
+          // 双线性插值, 计算四个点的权重
+          // https://blog.csdn.net/u013010889/article/details/79232740
           T ly = y - y_low;
           T lx = x - x_low;
           T hy = 1. - ly, hx = 1. - lx;
@@ -103,10 +106,13 @@ void pre_calc_for_bilinear_interpolate(
 
           // save weights and indeces
           PreCalc<T> pc;
+
+          // 特征图被拉成了一维数组, 这里直接换算每个element周围的四个点在特征图上的一维坐标
           pc.pos1 = y_low * width + x_low;
           pc.pos2 = y_low * width + x_high;
           pc.pos3 = y_high * width + x_low;
           pc.pos4 = y_high * width + x_high;
+
           pc.w1 = w1;
           pc.w2 = w2;
           pc.w3 = w3;
@@ -166,7 +172,7 @@ void ROIAlignForward_cpu_kernel(
 
     // Do not using rounding; this implementation detail is critical
     // 每个roi中的四个坐标值都是相对于原图的坐标, 这里根据当前level特征图的缩放比例\
-    // 对坐标进行缩放
+    // 对坐标进行缩放, 缩放成特征图上的坐标
     T roi_start_w = offset_bottom_rois[0] * spatial_scale;
     T roi_start_h = offset_bottom_rois[1] * spatial_scale;
     T roi_end_w = offset_bottom_rois[2] * spatial_scale;
@@ -233,6 +239,7 @@ void ROIAlignForward_cpu_kernel(
           T output_val = 0.;
           for (int iy = 0; iy < roi_bin_grid_h; iy++) {  // 2
             for (int ix = 0; ix < roi_bin_grid_w; ix++) {  // 2
+              // 下面处理每一个bin
               PreCalc<T> pc = pre_calc[pre_calc_index];
 
               // offset_bottom_data 指向输入特征图的指针
@@ -246,7 +253,7 @@ void ROIAlignForward_cpu_kernel(
           }
           output_val /= count;
 
-          // 指向output.data的指针 (num_rois, channels, pooled_height, pooled_width)
+          // top_data 即 output.data(), 这里应该是把output转换成了一维tensor
           top_data[index] = output_val;
         } // for pw
       } // for ph
@@ -278,6 +285,7 @@ at::Tensor ROIAlign_forward_cpu(const at::Tensor& input,
   AT_DISPATCH_FLOATING_TYPES(input.type(), "ROIAlign_forward", [&] {
     ROIAlignForward_cpu_kernel<scalar_t>(
          output_size,
+         // TODO: Tensor.data()的返回值是什么?查看C++ API
          input.data<scalar_t>(),
          spatial_scale,
          channels,
