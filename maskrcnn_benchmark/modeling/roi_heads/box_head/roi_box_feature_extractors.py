@@ -15,25 +15,27 @@ class ResNet50Conv5ROIFeatureExtractor(nn.Module):
     def __init__(self, config, in_channels):
         super(ResNet50Conv5ROIFeatureExtractor, self).__init__()
 
-        resolution = config.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION
-        scales = config.MODEL.ROI_BOX_HEAD.POOLER_SCALES
-        sampling_ratio = config.MODEL.ROI_BOX_HEAD.POOLER_SAMPLING_RATIO
+        resolution = config.MODEL.ROI_BOX_HEAD.POOLER_RESOLUTION  # 14
+        scales = config.MODEL.ROI_BOX_HEAD.POOLER_SCALES  # 1/16
+        sampling_ratio = config.MODEL.ROI_BOX_HEAD.POOLER_SAMPLING_RATIO  # 0
         pooler = Pooler(
             output_size=(resolution, resolution),
             scales=scales,
             sampling_ratio=sampling_ratio,
         )
 
+        # 使用resnet中的stage5作为head
         stage = resnet.StageSpec(index=4, block_count=3, return_features=False)
         head = resnet.ResNetHead(
+            # BottleneckWithFixedBatchNorm
             block_module=config.MODEL.RESNETS.TRANS_FUNC,
             stages=(stage,),
             num_groups=config.MODEL.RESNETS.NUM_GROUPS,
-            width_per_group=config.MODEL.RESNETS.WIDTH_PER_GROUP,
+            width_per_group=config.MODEL.RESNETS.WIDTH_PER_GROUP,  # 64
             stride_in_1x1=config.MODEL.RESNETS.STRIDE_IN_1X1,
             stride_init=None,
-            res2_out_channels=config.MODEL.RESNETS.RES2_OUT_CHANNELS,
-            dilation=config.MODEL.RESNETS.RES5_DILATION
+            res2_out_channels=config.MODEL.RESNETS.RES2_OUT_CHANNELS,  # 256
+            dilation=config.MODEL.RESNETS.RES5_DILATION  # 1
         )
 
         self.pooler = pooler
@@ -105,12 +107,12 @@ class FPNXconv1fcFeatureExtractor(nn.Module):
         self.pooler = pooler
 
         use_gn = cfg.MODEL.ROI_BOX_HEAD.USE_GN
-        conv_head_dim = cfg.MODEL.ROI_BOX_HEAD.CONV_HEAD_DIM
-        num_stacked_convs = cfg.MODEL.ROI_BOX_HEAD.NUM_STACKED_CONVS
+        conv_head_dim = cfg.MODEL.ROI_BOX_HEAD.CONV_HEAD_DIM  # 256
+        num_stacked_convs = cfg.MODEL.ROI_BOX_HEAD.NUM_STACKED_CONVS  # 4
         dilation = cfg.MODEL.ROI_BOX_HEAD.DILATION
 
         xconvs = []
-        for ix in range(num_stacked_convs):
+        for ix in range(num_stacked_convs):  # 4
             xconvs.append(
                 nn.Conv2d(
                     in_channels,

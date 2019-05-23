@@ -1,9 +1,7 @@
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from maskrcnn_benchmark.layers import ROIAlign
-
 from .utils import cat
 
 
@@ -102,7 +100,7 @@ class Pooler(nn.Module):
         """
         :param x (list[Tensor]): 各个level的特征图
         :param boxes (list[BoxList]): 要进行池化操作的boxes
-        :return result (Tensor[N, 256, 7, 7])
+        :return result (Tensor[N, 256, 7, 7]) N指的是所有roi
         """
         num_levels = len(self.poolers)
 
