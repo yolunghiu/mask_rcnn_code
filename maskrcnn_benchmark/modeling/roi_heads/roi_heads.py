@@ -20,6 +20,12 @@ class CombinedROIHeads(torch.nn.ModuleDict):
             self.keypoint.feature_extractor = self.box.feature_extractor
 
     def forward(self, features, proposals, targets=None):
+        """
+        :param features: list[Tensor], 各个level的特征图
+        :param proposals: list[Boxlist], 每张图片上保留的post_nms_top_n个anchor
+        :param targets: list[Boxlist], 每张图片上的gt_box
+        """
+
         losses = {}
         # TODO rename x to roi_box_features, if it doesn't increase memory consumption
         x, detections, loss_box = self.box(features, proposals, targets)

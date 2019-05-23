@@ -77,11 +77,15 @@ class FPN2MLPFeatureExtractor(nn.Module):
         self.out_channels = representation_size
 
     def forward(self, x, proposals):
-        # x: 各个level的feature map
-        x = self.pooler(x, proposals)
-        x = x.view(x.size(0), -1)
+        """x: 各个level的feature map"""
 
+        # Tensor[N, 256, 7, 7] N指的是所有roi
+        x = self.pooler(x, proposals)
+        # [N, 256*7*7]
+        x = x.view(x.size(0), -1)
+        # [N, 1024]
         x = F.relu(self.fc6(x))
+        # [N, 1024]
         x = F.relu(self.fc7(x))
 
         return x
