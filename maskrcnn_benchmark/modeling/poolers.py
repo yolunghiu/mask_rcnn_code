@@ -72,14 +72,13 @@ class Pooler(nn.Module):
 
     def convert_to_roi_format(self, boxes):
         """把要进行池化操作的box进行格式转换
-        boxes (list[BoxList])
+        boxes (list[BoxList]), 第一个维度是img_batch
         """
-        # 将所有level的anchor拼接起来, Nx4
+        # Nx4, 将一个batch中所有图片上的box连起来
         concat_boxes = cat([b.bbox for b in boxes], dim=0)
-
         device, dtype = concat_boxes.device, concat_boxes.dtype
 
-        # [0, 0, 0, ..., 1, 1, ..., 2, 2, ..., ..., level-1, level-1, ...], Nx1
+        # [0, 0, ..., 1, 1, ..., 2, 2, ..., img_batch-1], Nx1
         ids = cat(
             [
                 torch.full((len(b), 1), i, dtype=dtype, device=device)
@@ -88,8 +87,8 @@ class Pooler(nn.Module):
             dim=0,
         )
 
-        # Nx5, [    [id1, x1, y1, x2, y2],
-        #           [id2, x1, y1, x2, y2],
+        # Nx5, [    [img_id, x1, y1, x2, y2],
+        #           [img_id, x1, y1, x2, y2],
         #           ...
         #      ]
         rois = torch.cat([ids, concat_boxes], dim=1)
@@ -99,13 +98,12 @@ class Pooler(nn.Module):
     def forward(self, x, boxes):
         """
         :param x (list[Tensor]): 各个level的特征图
-        :param boxes (list[BoxList]): 要进行池化操作的boxes
+        :param boxes (list[BoxList]): 要进行池化操作的boxes, 第一个维度是img_batch
         :return result (Tensor[N, 256, 7, 7]) N指的是所有roi
         """
         num_levels = len(self.poolers)
 
-        # Nx5, 在每个box之前添加了对应feature map level的索引值
-        # 这个level指的是生成的anchor所处的特征图的level
+        # Nx5, 在每个box之前添加了对应image的索引值
         rois = self.convert_to_roi_format(boxes)
         if num_levels == 1:
             return self.poolers[0](x[0], rois)
@@ -128,8 +126,7 @@ class Pooler(nn.Module):
             # 计算结果中属于当前level特征图的proposal
             idx_in_level = torch.nonzero(levels == level).squeeze(1)
 
-            # 属于当前level的roi, 注意选出的roi第一列是任意值, 这里的level指的是映射
-            # 之后的level
+            # 属于当前level的roi
             rois_per_level = rois[idx_in_level]
 
             result[idx_in_level] = pooler(per_level_feature, rois_per_level)

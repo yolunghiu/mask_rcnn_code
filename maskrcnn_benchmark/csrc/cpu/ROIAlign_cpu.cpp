@@ -147,7 +147,7 @@ void ROIAlignForward_cpu_kernel(
     ) {
   // 这里的T对应到python中指的应该是float型的数
 
-  // 这个指的是传入的每个roi都有5个值, 第一个值是该roi所处特征图的编号
+  // 这个指的是传入的每个roi都有5个值, 第一个值是当前img在batch中的索引值
   // 后四个值是坐标
   int roi_cols = 5;
 
@@ -165,7 +165,7 @@ void ROIAlignForward_cpu_kernel(
 
     int roi_batch_ind = 0;
     if (roi_cols == 5) {
-      // 这个变量保存当前roi所处的level编号, 这里的level指的是映射之前的level
+      // 当前roi所处的image在batch中的索引值
       roi_batch_ind = offset_bottom_rois[0];
       offset_bottom_rois++;
     }
@@ -227,7 +227,10 @@ void ROIAlignForward_cpu_kernel(
       // 当前roi每个channel池化之后特征图的索引初始值(输出)
       int index_n_c = index_n + c * pooled_width * pooled_height;
 
-      // bottom_data是指向特征图的指针
+      // bottom_data是指向特征图的指针, 特征图的维度为 [N, channels, height, width]
+      // 其中第一个N指的是当前batch中图片的数量. 此处 roi_batch_ind * channels 表示
+      // 当前roi所处的图片在当前特征图上的初始位置, offset_bottom_data则表示当前roi的第
+      // c个通道在特征图上的初始位置
       const T* offset_bottom_data =
           bottom_data + (roi_batch_ind * channels + c) * height * width;
       int pre_calc_index = 0;
@@ -285,7 +288,6 @@ at::Tensor ROIAlign_forward_cpu(const at::Tensor& input,
   AT_DISPATCH_FLOATING_TYPES(input.type(), "ROIAlign_forward", [&] {
     ROIAlignForward_cpu_kernel<scalar_t>(
          output_size,
-         // TODO: Tensor.data()的返回值是什么?查看C++ API
          input.data<scalar_t>(),
          spatial_scale,
          channels,

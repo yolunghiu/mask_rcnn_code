@@ -8,20 +8,16 @@ from .roi_box_predictors import make_roi_box_predictor
 
 
 class ROIBoxHead(torch.nn.Module):
-    """
-    Generic Box Head class.
-    """
-
     def __init__(self, cfg, in_channels):
         super(ROIBoxHead, self).__init__()
 
-        # 创建FPN2MLPFeatureExtractor对象
+        # 创建FPN2MLPFeatureExtractor对象, 对roi进行roialign, 并使用全连接层进行特征提取
         self.feature_extractor = make_roi_box_feature_extractor(cfg, in_channels)
 
         # 预测最终的分类置信度和box, out_channels是head中全连接层的神经元个数
         self.predictor = make_roi_box_predictor(cfg, self.feature_extractor.out_channels)
 
-        # 创建PostProcessor对象,用于测试阶段
+        # 创建PostProcessor对象,用于测试阶段对box进行过滤
         self.post_processor = make_roi_box_post_processor(cfg)
 
         self.loss_evaluator = make_roi_box_loss_evaluator(cfg)
@@ -29,7 +25,7 @@ class ROIBoxHead(torch.nn.Module):
     def forward(self, features, proposals, targets=None):
         """
         Arguments:
-            features (list[Tensor]): feature maps from possibly several levels
+            features (list[Tensor]): 多个level的特征图
             proposals (list[BoxList]): proposal boxes
             targets (list[BoxList], optional): the ground-truth targets.
 
@@ -53,7 +49,9 @@ class ROIBoxHead(torch.nn.Module):
         # 最终预测的分类置信度和box预测值, [num_roi, 81], [num_roi, 81*4]
         class_logits, box_regression = self.predictor(x)
 
+        # 测试阶段, 对box进行score的过滤, nms, 最后每张图片保留100个box
         if not self.training:
+            # result是一个list, 每个元素对应一张图片, 是一个BoxList对象
             result = self.post_processor((class_logits, box_regression), proposals)
             return x, result, {}
 

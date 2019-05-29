@@ -77,7 +77,11 @@ class FPN2MLPFeatureExtractor(nn.Module):
         self.out_channels = representation_size
 
     def forward(self, x, proposals):
-        """x: 各个level的feature map"""
+        """
+        :param x: 各个level的feature map  list[Tensor], 第一个维度是level
+        :param proposals: 经过筛选之后保留的post_nms_top_n个anchor, 第一个维度是img_batch
+            是一个BoxList列表, 第一维度是img_batch
+        """
 
         # Tensor[N, 256, 7, 7] N指的是所有roi
         x = self.pooler(x, proposals)
