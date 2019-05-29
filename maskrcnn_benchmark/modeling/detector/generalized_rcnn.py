@@ -57,7 +57,7 @@ class GeneralizedRCNN(nn.Module):
         # proposal_losses是二分类损失和box回归损失
         proposals, proposal_losses = self.rpn(images, features, targets)
 
-        # 这里调用roi_heads, 传入的是特征图，anchors，gt_box
+        # 这里调用roi_heads, 传入的是特征图, anchors, gt_box
         if self.roi_heads:
             x, result, detector_losses = self.roi_heads(features, proposals, targets)
         else:

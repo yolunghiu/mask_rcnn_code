@@ -21,7 +21,9 @@ class ROIBoxHead(torch.nn.Module):
         # 预测最终的分类置信度和box, out_channels是head中全连接层的神经元个数
         self.predictor = make_roi_box_predictor(cfg, self.feature_extractor.out_channels)
 
+        # 创建PostProcessor对象,用于测试阶段
         self.post_processor = make_roi_box_post_processor(cfg)
+
         self.loss_evaluator = make_roi_box_loss_evaluator(cfg)
 
     def forward(self, features, proposals, targets=None):
@@ -48,7 +50,7 @@ class ROIBoxHead(torch.nn.Module):
         # pooler + heads, (num_rois, 1024)
         x = self.feature_extractor(features, proposals)
 
-        # 最终预测的分类置信度和box预测值
+        # 最终预测的分类置信度和box预测值, [num_roi, 81], [num_roi, 81*4]
         class_logits, box_regression = self.predictor(x)
 
         if not self.training:
@@ -58,6 +60,7 @@ class ROIBoxHead(torch.nn.Module):
         loss_classifier, loss_box_reg = self.loss_evaluator(
             [class_logits], [box_regression]
         )
+
         return (
             x,
             proposals,

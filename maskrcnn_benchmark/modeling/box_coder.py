@@ -74,7 +74,8 @@ class BoxCoder(object):
         ctr_y = boxes[:, 1] + 0.5 * heights
 
         wx, wy, ww, wh = self.weights
-        # 每四个数采样一个数
+        # 每四个数采样一个数, 在PostProcessor中, 传入的box_regression tensor的
+        # 维度是[num_roi, 81*4], 这一操作确保每个roi对应的81个box都被处理
         # d_* 是要学习的变换
         dx = rel_codes[:, 0::4] / wx
         dy = rel_codes[:, 1::4] / wy
