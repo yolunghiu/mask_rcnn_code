@@ -46,7 +46,7 @@ class RPNLossComputation(object):
         # for creating the labels, so clear them all
         target = target.copy_with_fields(copied_fields)
 
-        # matched_idxs有可能出现负值, 需要处理一下
+        # matched_idxs有可能出现负值, 需要处理一下, 这里没有改变matched_idxs的值
         matched_targets = target[matched_idxs.clamp(min=0)]
         matched_targets.add_field("matched_idxs", matched_idxs)
 
@@ -95,7 +95,7 @@ class RPNLossComputation(object):
                 inds_to_discard = matched_idxs == Matcher.BETWEEN_THRESHOLDS
                 labels_per_image[inds_to_discard] = -1
 
-            # 第一个参数指的是每个预测的anchor对于的gt_box, 第二个参数指的是预测的anchor
+            # 第一个参数指的是每个预测的anchor对应的gt_box, 第二个参数指的是预测的anchor
             # 返回值是RCNN论文中的 [t_x, t_y, t_w, t_h]
             regression_targets_per_image = self.box_coder.encode(
                 matched_targets.bbox, anchors_per_image.bbox

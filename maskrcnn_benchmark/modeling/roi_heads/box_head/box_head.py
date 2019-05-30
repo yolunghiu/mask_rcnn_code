@@ -11,7 +11,8 @@ class ROIBoxHead(torch.nn.Module):
     def __init__(self, cfg, in_channels):
         super(ROIBoxHead, self).__init__()
 
-        # 创建FPN2MLPFeatureExtractor对象, 对roi进行roialign, 并使用全连接层进行特征提取
+        # 创建FPN2MLPFeatureExtractor对象, 对roi进行roialign, 并使用全连接层将池化后的特征图
+        # 转换成特征向量
         self.feature_extractor = make_roi_box_feature_extractor(cfg, in_channels)
 
         # 预测最终的分类置信度和box, out_channels是head中全连接层的神经元个数
@@ -37,9 +38,8 @@ class ROIBoxHead(torch.nn.Module):
                 head. During testing, returns an empty dict.
         """
 
+        # 在训练阶段, 从每张图片上以固定的正负样本比例采样512个roi(512是手动设置的参数)
         if self.training:
-            # Faster R-CNN subsamples during training the proposals with a fixed
-            # positive / negative ratio
             with torch.no_grad():
                 proposals = self.loss_evaluator.subsample(proposals, targets)
 

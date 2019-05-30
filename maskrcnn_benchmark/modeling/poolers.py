@@ -42,8 +42,10 @@ class LevelMapper(object):
 
 
 class Pooler(nn.Module):
-    """
-    Pooler for Detection with or without FPN.
+    """对roi进行roialign操作
+    输入各个level的特征图和每张图片上预测的所有roi(经过筛选之后的), 首先使用LevelMapper
+    计算每个roi应该对应到哪个level的特征图上, 然后分别处理各个level上的roi, 对其进行roialign
+    操作.
     """
 
     def __init__(self, output_size, scales, sampling_ratio):
