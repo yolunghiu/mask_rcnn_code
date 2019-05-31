@@ -21,6 +21,7 @@ class ROIBoxHead(torch.nn.Module):
         # 创建PostProcessor对象,用于测试阶段对box进行过滤
         self.post_processor = make_roi_box_post_processor(cfg)
 
+        # 创建FastRCNNLossComputation, 用来计算分类损失和回归损失
         self.loss_evaluator = make_roi_box_loss_evaluator(cfg)
 
     def forward(self, features, proposals, targets=None):
@@ -31,11 +32,11 @@ class ROIBoxHead(torch.nn.Module):
             targets (list[BoxList], optional): the ground-truth targets.
 
         Returns:
-            x (Tensor): the result of the feature extractor
-            proposals (list[BoxList]): during training, the subsampled proposals
-                are returned. During testing, the predicted boxlists are returned
-            losses (dict[Tensor]): During training, returns the losses for the
-                head. During testing, returns an empty dict.
+            x (Tensor): [num_roi, 1024], 每个roi经过池化和fc层, 最终被转化成一个特征向量
+            proposals (list[BoxList]): 训练阶段, 返回的是每张图片所有roi降采样之后保留的
+                roi. 测试阶段, 返回的是每张图片上所有roi经过过滤之后保留的roi, coco中规定是
+                100个.
+            losses (dict[Tensor]): 训练阶段, 返回box head的loss. 测试阶段为空
         """
 
         # 在训练阶段, 从每张图片上以固定的正负样本比例采样512个roi(512是手动设置的参数)

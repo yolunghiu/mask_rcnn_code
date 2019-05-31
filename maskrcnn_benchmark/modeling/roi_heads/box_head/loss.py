@@ -65,11 +65,11 @@ class FastRCNNLossComputation(object):
             上面两个参数维度都是img_batch
 
         :return:
-            labels: fg,bg,discard list[Tensor] [img_batch, num_anchors]
+            labels: list[Tensor] [img_batch, num_anchors]
             regression_targets: [t_x, t_y, t_w, t_h] list[Tensor]  [img_batch, num_anchors, 4]
         """
 
-        # list中每个元素是一个N维tensor, 取值范围是[-1,0,1], -1代表discard, 0代表bg, 1代表fg
+        # list中每个元素是一个N维tensor, 取值范围是0~80, 注意这里不同于rpn中的label
         labels = []
 
         # list中每个元素是Nx4的tensor, 代表[t_x, t_y, t_w, t_h], 实际的平移和缩放值
@@ -116,7 +116,7 @@ class FastRCNNLossComputation(object):
             这两个参数第一个维度都是img_batch
         """
 
-        # labels: fg,bg,discard     regression_targets: [t_x, t_y, t_w, t_h]
+        # labels: 每个roi的标签     regression_targets: [t_x, t_y, t_w, t_h]
         labels, regression_targets = self.prepare_targets(proposals, targets)
 
         # 正负样本的mask, 这两个mask的维度与labels相同, 对于每张图片来说, 这两个mask中
@@ -166,29 +166,37 @@ class FastRCNNLossComputation(object):
         box_regression = cat(box_regression, dim=0)  # [num_roi, 81*4]
         device = class_logits.device
 
+        # 调用这个函数之前必须已经调用了subsample函数
         if not hasattr(self, "_proposals"):
             raise RuntimeError("subsample needs to be called before")
 
         proposals = self._proposals
 
+        # labels: 每个roi的标签, 0~80     [num_roi, 1]
+        # 这个label是在match_targets_to_proposals函数中设置的, target[idx]会同时复制labels
         labels = cat([proposal.get_field("labels") for proposal in proposals], dim=0)
+        # regression_targets: [t_x, t_y, t_w, t_h]    [num_roi, 4]
         regression_targets = cat(
             [proposal.get_field("regression_targets") for proposal in proposals], dim=0
         )
 
+        # 结合了log_softmax和交叉熵损失
         classification_loss = F.cross_entropy(class_logits, labels)
 
-        # get indices that correspond to the regression targets for
-        # the corresponding ground truth labels, to be used with
-        # advanced indexing
+        # 正样本的索引值
         sampled_pos_inds_subset = torch.nonzero(labels > 0).squeeze(1)
+        # 正样本的label
         labels_pos = labels[sampled_pos_inds_subset]
+
         if self.cls_agnostic_bbox_reg:
             map_inds = torch.tensor([4, 5, 6, 7], device=device)
         else:
+            # 对于每个roi, roi head的box预测值是为每个类别预测一个box
+            # 这里直接选出ground truth类别的预测值
             map_inds = 4 * labels_pos[:, None] + torch.tensor(
                 [0, 1, 2, 3], device=device)
 
+        # 只对正样本计算回归损失
         box_loss = smooth_l1_loss(
             box_regression[sampled_pos_inds_subset[:, None], map_inds],
             regression_targets[sampled_pos_inds_subset],
