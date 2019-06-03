@@ -27,8 +27,14 @@ class CombinedROIHeads(torch.nn.ModuleDict):
         """
 
         losses = {}
+
+        # x: [num_rois, 1024]
+        # detections: (list[BoxList]) 训练阶段, 返回的是每张图片所有roi降采样之后保留的
+        #   roi. 测试阶段, 返回的是每张图片上所有roi经过过滤之后保留的roi, coco中规定是100个.
+        # losses: (dict[Tensor]) 训练阶段, 返回box head的loss. 测试阶段为空
         x, detections, loss_box = self.box(features, proposals, targets)
         losses.update(loss_box)
+
         if self.cfg.MODEL.MASK_ON:
             mask_features = features
             # optimization: during training, if we share the feature extractor between
@@ -60,7 +66,10 @@ class CombinedROIHeads(torch.nn.ModuleDict):
 
 
 def build_roi_heads(cfg, in_channels):
-    # individually create the heads, that will be combined together afterwards
+    """
+    :param in_channels: FPN中是256, 即backbone输出的特征图的通道数
+    """
+    
     roi_heads = []
     if cfg.MODEL.RETINANET_ON:  # 默认为False
         return []
