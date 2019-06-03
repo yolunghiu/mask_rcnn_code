@@ -36,30 +36,21 @@ class CombinedROIHeads(torch.nn.ModuleDict):
         losses.update(loss_box)
 
         if self.cfg.MODEL.MASK_ON:
+            # 默认情况下使用ResNet backbone提取的特征
             mask_features = features
-            # optimization: during training, if we share the feature extractor between
-            # the box and the mask heads, then we can reuse the features already computed
-            if (
-                    self.training
-                    and self.cfg.MODEL.ROI_MASK_HEAD.SHARE_BOX_FEATURE_EXTRACTOR
-            ):
+            if (self.training and self.cfg.MODEL.ROI_MASK_HEAD.SHARE_BOX_FEATURE_EXTRACTOR):
                 mask_features = x
-            # During training, self.box() will return the unaltered proposals as "detections"
-            # this makes the API consistent during training and testing
+
             x, detections, loss_mask = self.mask(mask_features, detections, targets)
             losses.update(loss_mask)
 
         if self.cfg.MODEL.KEYPOINT_ON:
+            # 默认情况下使用ResNet backbone提取的特征
             keypoint_features = features
-            # optimization: during training, if we share the feature extractor between
-            # the box and the mask heads, then we can reuse the features already computed
-            if (
-                    self.training
-                    and self.cfg.MODEL.ROI_KEYPOINT_HEAD.SHARE_BOX_FEATURE_EXTRACTOR
-            ):
+            # 可以设置keypoint head使用box head提取到的特征作为输入
+            if (self.training and self.cfg.MODEL.ROI_KEYPOINT_HEAD.SHARE_BOX_FEATURE_EXTRACTOR):
                 keypoint_features = x
-            # During training, self.box() will return the unaltered proposals as "detections"
-            # this makes the API consistent during training and testing
+
             x, detections, loss_keypoint = self.keypoint(keypoint_features, detections, targets)
             losses.update(loss_keypoint)
         return x, detections, losses
@@ -69,7 +60,7 @@ def build_roi_heads(cfg, in_channels):
     """
     :param in_channels: FPN中是256, 即backbone输出的特征图的通道数
     """
-    
+
     roi_heads = []
     if cfg.MODEL.RETINANET_ON:  # 默认为False
         return []
@@ -81,7 +72,6 @@ def build_roi_heads(cfg, in_channels):
     if cfg.MODEL.KEYPOINT_ON:
         roi_heads.append(("keypoint", build_roi_keypoint_head(cfg, in_channels)))
 
-    # combine individual heads in a single module
     if roi_heads:
         roi_heads = CombinedROIHeads(cfg, roi_heads)
 

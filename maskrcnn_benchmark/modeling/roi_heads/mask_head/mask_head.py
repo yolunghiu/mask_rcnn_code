@@ -12,16 +12,13 @@ def keep_only_positive_boxes(boxes):
     """
     Given a set of BoxList containing the `labels` field,
     return a set of BoxList for which `labels > 0`.
-
-    Arguments:
-        boxes (list of BoxList)
     """
     assert isinstance(boxes, (list, tuple))
     assert isinstance(boxes[0], BoxList)
     assert boxes[0].has_field("labels")
+
     positive_boxes = []
     positive_inds = []
-    num_boxes = 0
     for boxes_per_image in boxes:
         labels = boxes_per_image.get_field("labels")
         inds_mask = labels > 0
@@ -35,18 +32,23 @@ class ROIMaskHead(torch.nn.Module):
     def __init__(self, cfg, in_channels):
         super(ROIMaskHead, self).__init__()
         self.cfg = cfg.clone()
+
+        # 创建MaskRCNNFPNFeatureExtractor对象, 对特征图进行roialign, 并用卷积层提取特征
         self.feature_extractor = make_roi_mask_feature_extractor(cfg, in_channels)
-        self.predictor = make_roi_mask_predictor(
-            cfg, self.feature_extractor.out_channels)
+
+        # 创建MaskRCNNC4Predictor对象, 使用转置卷积和1x1卷积生成mask预测值
+        self.predictor = make_roi_mask_predictor(cfg, self.feature_extractor.out_channels)
+
         self.post_processor = make_roi_mask_post_processor(cfg)
         self.loss_evaluator = make_roi_mask_loss_evaluator(cfg)
 
     def forward(self, features, proposals, targets=None):
         """
         Arguments:
-            features (list[Tensor]): feature-maps from possibly several levels
-            proposals (list[BoxList]): proposal boxes
-            targets (list[BoxList], optional): the ground-truth targets.
+            features (list[Tensor]): 默认情况下使用的是backbone网络提取的特征图
+            proposals (list[BoxList]): 训练阶段是每张图片所有roi降采样之后保留的
+                roi. 测试阶段是每张图片上所有roi经过过滤之后保留的roi, coco中规定是100个.
+            targets (list[BoxList], optional): 每张图片上的gt
 
         Returns:
             x (Tensor): the result of the feature extractor
@@ -58,14 +60,17 @@ class ROIMaskHead(torch.nn.Module):
         """
 
         if self.training:
-            # during training, only focus on positive boxes
+            # 训练阶段只关心正样本
             all_proposals = proposals
             proposals, positive_inds = keep_only_positive_boxes(proposals)
+
+        # 对特征图进行池化和特征提取
         if self.training and self.cfg.MODEL.ROI_MASK_HEAD.SHARE_BOX_FEATURE_EXTRACTOR:
             x = features
             x = x[torch.cat(positive_inds, dim=0)]
         else:
             x = self.feature_extractor(features, proposals)
+
         mask_logits = self.predictor(x)
 
         if not self.training:
