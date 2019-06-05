@@ -39,7 +39,10 @@ class ROIMaskHead(torch.nn.Module):
         # 创建MaskRCNNC4Predictor对象, 使用转置卷积和1x1卷积生成mask预测值
         self.predictor = make_roi_mask_predictor(cfg, self.feature_extractor.out_channels)
 
+        # 创建MaskPostProcessor对象, 用于从所有类别的mask中选出概率值最大的类别
         self.post_processor = make_roi_mask_post_processor(cfg)
+
+        #
         self.loss_evaluator = make_roi_mask_loss_evaluator(cfg)
 
     def forward(self, features, proposals, targets=None):
@@ -47,7 +50,7 @@ class ROIMaskHead(torch.nn.Module):
         Arguments:
             features (list[Tensor]): 默认情况下使用的是backbone网络提取的特征图
             proposals (list[BoxList]): 训练阶段是每张图片所有roi降采样之后保留的
-                roi. 测试阶段是每张图片上所有roi经过过滤之后保留的roi, coco中规定是100个.
+                roi(512个). 测试阶段是每张图片上所有roi经过过滤之后保留的roi, coco中规定是100个.
             targets (list[BoxList], optional): 每张图片上的gt
 
         Returns:
@@ -61,7 +64,7 @@ class ROIMaskHead(torch.nn.Module):
 
         if self.training:
             # 训练阶段只关心正样本
-            all_proposals = proposals
+            all_proposals = proposals  # 正负样本都有, 共512个, 比例是1:4的比例
             proposals, positive_inds = keep_only_positive_boxes(proposals)
 
         # 对特征图进行池化和特征提取
@@ -69,10 +72,14 @@ class ROIMaskHead(torch.nn.Module):
             x = features
             x = x[torch.cat(positive_inds, dim=0)]
         else:
+            # [num_pos_roi, 256, 14, 14]
             x = self.feature_extractor(features, proposals)
 
+        # [num_pos_roi, 81, 28, 28], 其中num_pos_roi是所有图片上正样本的数量
         mask_logits = self.predictor(x)
 
+        # 测试阶段, 根据label从所有类别的mask中选出概率最大的类别的mask,
+        # 并将其添加到BoxList对象的mask属性中
         if not self.training:
             result = self.post_processor(mask_logits, proposals)
             return x, result, {}

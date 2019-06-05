@@ -1,7 +1,5 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-import torch
-
 import pycocotools.mask as mask_utils
+import torch
 
 # transpose
 FLIP_LEFT_RIGHT = 0
@@ -41,7 +39,7 @@ class Mask(object):
     def crop(self, box):
         w, h = box[2] - box[0], box[3] - box[1]
 
-        cropped_masks = self.masks[:, box[1] : box[3], box[0] : box[2]]
+        cropped_masks = self.masks[:, box[1]: box[3], box[0]: box[2]]
         return Mask(cropped_masks, size=(w, h), mode=self.mode)
 
     def resize(self, size, *args, **kwargs):
@@ -50,18 +48,19 @@ class Mask(object):
 
 class Polygons(object):
     """
-    This class holds a set of polygons that represents a single instance
-    of an object mask. The object can be represented as a set of
-    polygons
+    这个类代表一个roi上物体的mask, 一个物体的mask可能由多个部分构成, 如物体被遮挡的情况,
+    因此self.polygons是一个list, list中每个Tensor代表了物体的mask(或mask的一部分)
     """
 
     def __init__(self, polygons, size, mode):
-        # assert isinstance(polygons, list), '{}'.format(polygons)
         if isinstance(polygons, list):
+            # polygons本是二维的list, 第一个维度是mask数量, 第二个维度是每个mask
+            # 现在将第二个维度中的每个mask由list转换为Tensor表示
             polygons = [torch.as_tensor(p, dtype=torch.float32) for p in polygons]
         elif isinstance(polygons, Polygons):
             polygons = polygons.polygons
 
+        # list[Tensor]
         self.polygons = polygons
         self.size = size
         self.mode = mode
@@ -96,6 +95,7 @@ class Polygons(object):
         w = max(w, 1)
         h = max(h, 1)
 
+        # 将mask的坐标值由原图的尺度平移到box的尺度, 即以box左上角为原点
         cropped_polygons = []
         for poly in self.polygons:
             p = poly.clone()
@@ -103,6 +103,7 @@ class Polygons(object):
             p[1::2] = p[1::2] - box[1]  # .clamp(min=0, max=h)
             cropped_polygons.append(p)
 
+        # size是box的尺寸
         return Polygons(cropped_polygons, size=(w, h), mode=self.mode)
 
     def resize(self, size, *args, **kwargs):
@@ -145,16 +146,15 @@ class Polygons(object):
 
 class SegmentationMask(object):
     """
-    This class stores the segmentations for all objects in the image
+    这个类存存储一张图片上所有roi的mask
     """
 
     def __init__(self, polygons, size, mode=None):
         """
-        Arguments:
-            polygons: a list of list of lists of numbers. The first
-                level of the list correspond to individual instances,
-                the second level to all the polygons that compose the
-                object, and the third level to the polygon coordinates.
+        :param polygons: 三维的list, 第一个维度代表所有roi, 第二个维度代表每个roi上的
+            所有mask(将被表示成一个Polygons对象), 第三个维度代表组成一个roi的各个mask
+            (一个物体可能由多个mask组成, 如物体被遮挡的情况)坐标
+        :param size: 图片的尺寸
         """
         assert isinstance(polygons, list)
 

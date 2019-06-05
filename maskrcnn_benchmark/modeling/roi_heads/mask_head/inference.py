@@ -1,20 +1,15 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 from maskrcnn_benchmark.structures.bounding_box import BoxList
 
 
-# TODO check if want to return a single BoxList or a composite
-# object
+# TODO check if want to return a single BoxList or a composite object
 class MaskPostProcessor(nn.Module):
     """
-    From the results of the CNN, post process the masks
-    by taking the mask corresponding to the class with max
-    probability (which are of fixed size and directly output
-    by the CNN) and return the masks in the mask field of the BoxList.
+    根据label从所有类别的mask中选出概率最大的类别的mask, 并将其添加到BoxList对象
+    的mask属性中.
 
     If a masker object is passed, it will additionally
     project the masks in the image according to the locations in boxes,
@@ -27,7 +22,7 @@ class MaskPostProcessor(nn.Module):
     def forward(self, x, boxes):
         """
         Arguments:
-            x (Tensor): the mask logits
+            x (Tensor): the mask logits  [num_roi, 81, 28, 28]
             boxes (list[BoxList]): bounding boxes that are used as
                 reference, one for ech image
 
@@ -37,13 +32,14 @@ class MaskPostProcessor(nn.Module):
         """
         mask_prob = x.sigmoid()
 
-        # select masks coresponding to the predicted classes
+        # 从所有mask中选出正确类别的mask
         num_masks = x.shape[0]
         labels = [bbox.get_field("labels") for bbox in boxes]
         labels = torch.cat(labels)
         index = torch.arange(num_masks, device=labels.device)
-        mask_prob = mask_prob[index, labels][:, None]
+        mask_prob = mask_prob[index, labels][:, None]  # [num_roi, 1, 28, 28]
 
+        # 将mask按图片进行划分
         boxes_per_image = [len(box) for box in boxes]
         mask_prob = mask_prob.split(boxes_per_image, dim=0)
 
@@ -89,6 +85,7 @@ class MaskPostProcessorCOCOFormat(MaskPostProcessor):
 # but are kept here for the moment while we need them
 # temporarily gor paste_mask_in_image
 def expand_boxes(boxes, scale):
+    """以同等倍数对box进行缩放"""
     w_half = (boxes[:, 2] - boxes[:, 0]) * .5
     h_half = (boxes[:, 3] - boxes[:, 1]) * .5
     x_c = (boxes[:, 2] + boxes[:, 0]) * .5
@@ -102,22 +99,37 @@ def expand_boxes(boxes, scale):
     boxes_exp[:, 2] = x_c + w_half
     boxes_exp[:, 1] = y_c - h_half
     boxes_exp[:, 3] = y_c + h_half
+
     return boxes_exp
 
 
 def expand_masks(mask, padding):
-    N = mask.shape[0]
-    M = mask.shape[-1]
+    """用0填充mask
+    :param mask: [1, 1, 28, 28]
+    :return 填充好的mask和缩放比例
+    """
+    N = mask.shape[0]  # 1
+    M = mask.shape[-1]  # 28
     pad2 = 2 * padding
     scale = float(M + pad2) / M
+
+    # [1, 1, 30, 30]
     padded_mask = mask.new_zeros((N, 1, M + pad2, M + pad2))
     padded_mask[:, :, padding:-padding, padding:-padding] = mask
+
     return padded_mask, scale
 
 
 def paste_mask_in_image(mask, box, im_h, im_w, thresh=0.5, padding=1):
+    """利用线性插值将mask映射成box的大小, 然后生成指定宽高的图片的mask
+    :param mask: [1, 28, 28]
+    :param box: [4]
+    """
+
+    # 用0填充mask
     padded_mask, scale = expand_masks(mask[None], padding=padding)
-    mask = padded_mask[0, 0]
+    mask = padded_mask[0, 0]  # [30, 30]
+
     box = expand_boxes(box[None], scale)[0]
     box = box.to(dtype=torch.int32)
 
@@ -128,9 +140,9 @@ def paste_mask_in_image(mask, box, im_h, im_w, thresh=0.5, padding=1):
     h = max(h, 1)
 
     # Set shape to [batchxCxHxW]
-    mask = mask.expand((1, 1, -1, -1))
+    mask = mask.expand((1, 1, -1, -1))  # [1, 1, 30, 30]
 
-    # Resize mask
+    # 对mask进行线性插值到box的大小
     mask = mask.to(torch.float32)
     mask = F.interpolate(mask, size=(h, w), mode='bilinear', align_corners=False)
     mask = mask[0][0]
@@ -149,8 +161,8 @@ def paste_mask_in_image(mask, box, im_h, im_w, thresh=0.5, padding=1):
     y_1 = min(box[3] + 1, im_h)
 
     im_mask[y_0:y_1, x_0:x_1] = mask[
-        (y_0 - box[1]) : (y_1 - box[1]), (x_0 - box[0]) : (x_1 - box[0])
-    ]
+                                (y_0 - box[1]): (y_1 - box[1]), (x_0 - box[0]): (x_1 - box[0])
+                                ]
     return im_mask
 
 
@@ -165,27 +177,38 @@ class Masker(object):
         self.padding = padding
 
     def forward_single_image(self, masks, boxes):
+        """
+        :param masks: (num_roi_per_img, 1, 28, 28)
+        :param boxes: BoxList对象
+        """
         boxes = boxes.convert("xyxy")
         im_w, im_h = boxes.size
+
+        # res中保存每个mask映射到图片上之后的mask
         res = [
             paste_mask_in_image(mask[0], box, im_h, im_w, self.threshold, self.padding)
             for mask, box in zip(masks, boxes.bbox)
         ]
+
         if len(res) > 0:
+            # (num_roi_per_img, 1, im_h, im_w)
             res = torch.stack(res, dim=0)[:, None]
         else:
             res = masks.new_empty((0, 1, masks.shape[-2], masks.shape[-1]))
+
         return res
 
     def __call__(self, masks, boxes):
+        """
+        :param masks: list[Tensor] (num_roi_per_img, 1, 28, 28)
+        :param boxes: list[BoxList], 每张图片上的boxlist对象
+        """
         if isinstance(boxes, BoxList):
             boxes = [boxes]
 
         # Make some sanity check
         assert len(boxes) == len(masks), "Masks and boxes should have the same length."
 
-        # TODO:  Is this JIT compatible?
-        # If not we should make it compatible.
         results = []
         for mask, box in zip(masks, boxes):
             assert mask.shape[0] == len(box), "Number of objects should be the same."
@@ -195,8 +218,9 @@ class Masker(object):
 
 
 def make_roi_mask_post_processor(cfg):
+    # Whether or not resize and translate masks to the input image. 默认False
     if cfg.MODEL.ROI_MASK_HEAD.POSTPROCESS_MASKS:
-        mask_threshold = cfg.MODEL.ROI_MASK_HEAD.POSTPROCESS_MASKS_THRESHOLD
+        mask_threshold = cfg.MODEL.ROI_MASK_HEAD.POSTPROCESS_MASKS_THRESHOLD  # 0.5
         masker = Masker(threshold=mask_threshold, padding=1)
     else:
         masker = None

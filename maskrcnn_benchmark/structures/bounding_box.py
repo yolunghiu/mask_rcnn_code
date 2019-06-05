@@ -203,6 +203,9 @@ class BoxList(object):
         return bbox
 
     def __getitem__(self, item):
+        """
+        这个函数使得BoxList对象可以通过数组索引的方式获取元素
+        """
         bbox = BoxList(self.bbox[item], self.size, self.mode)
         for k, v in self.extra_fields.items():
             bbox.add_field(k, v[item])
@@ -240,6 +243,7 @@ class BoxList(object):
         return area
 
     def copy_with_fields(self, fields, skip_missing=False):
+        """使用当前BoxList对象的值创建一个新的对象"""
         bbox = BoxList(self.bbox, self.size, self.mode)
         if not isinstance(fields, (list, tuple)):
             fields = [fields]
