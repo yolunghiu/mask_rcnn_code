@@ -107,6 +107,8 @@ class Polygons(object):
         return Polygons(cropped_polygons, size=(w, h), mode=self.mode)
 
     def resize(self, size, *args, **kwargs):
+        """根据给定的尺寸, 将所有坐标缩放"""
+
         ratios = tuple(float(s) / float(s_orig) for s, s_orig in zip(size, self.size))
         if ratios[0] == ratios[1]:
             ratio = ratios[0]
@@ -124,15 +126,24 @@ class Polygons(object):
         return Polygons(scaled_polygons, size=size, mode=self.mode)
 
     def convert(self, mode):
+        """
+        借助coco提供的api, 首先将表示一个物体的一个或多个mask进行合并, 合并后
+        解码成由0和1组成的矩阵
+        """
+        # MxM (28)
         width, height = self.size
+
         if mode == "mask":
+            # 将polygons中的每个tensor转换成cocoapi中可以处理的类型rle [dict]
             rles = mask_utils.frPyObjects(
                 [p.numpy() for p in self.polygons], height, width
             )
+            # merge函数的intersect参数默认为False, 此时计算union, 为True时计算intersection
             rle = mask_utils.merge(rles)
+            # 解码rle编码的mask, 由0和1组成的28x28的矩阵
             mask = mask_utils.decode(rle)
             mask = torch.from_numpy(mask)
-            # TODO add squeeze?
+
             return mask
 
     def __repr__(self):

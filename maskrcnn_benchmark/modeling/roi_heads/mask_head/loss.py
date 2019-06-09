@@ -13,7 +13,7 @@ def project_masks_on_boxes(segmentation_masks, proposals, discretization_size):
     :param segmentation_masks: 一张图片上的SegmentationMask对象, 包含这张图片上所有生成
         的roi对应的gt_box的mask值
     :param proposals: BoxList对象, 代表一张图片上预测的所有roi
-    :param discretization_size: 14
+    :param discretization_size: 28
 
     Given segmentation masks and the bounding boxes corresponding
     to the location of the masks in the image, this function
@@ -22,7 +22,7 @@ def project_masks_on_boxes(segmentation_masks, proposals, discretization_size):
     loss computation as the targets.
     """
     masks = []
-    M = discretization_size  # 14
+    M = discretization_size  # 28
     device = proposals.bbox.device
     proposals = proposals.convert("xyxy")
 
@@ -36,8 +36,13 @@ def project_masks_on_boxes(segmentation_masks, proposals, discretization_size):
         # crop the masks, resize them to the desired resolution and
         # then convert them to the tensor representation,
         # instead of the list representation that was used
+
+        # 将mask的真实坐标值由原图的尺度平移到box的尺度, 即以box左上角为原点, size为box的尺寸
         cropped_mask = segmentation_mask.crop(proposal)
+        # 将mask的坐标值由box的尺寸缩放成MxM的大小, 因为mask_logits大小为MxM, 这里直接把真实
+        # 的mask坐标缩放成MxM的大小, 作为物体的掩码真实值, 用于计算loss
         scaled_mask = cropped_mask.resize((M, M))
+        # 将mask转换成由0和1表示的tensor
         mask = scaled_mask.convert(mode="mask")
         masks.append(mask)
 
@@ -55,7 +60,7 @@ class MaskRCNNLossComputation(object):
             discretization_size (int)
         """
         self.proposal_matcher = proposal_matcher
-        self.discretization_size = discretization_size  # 14
+        self.discretization_size = discretization_size  # 28
 
     def match_targets_to_proposals(self, proposal, target):
         """
@@ -92,6 +97,7 @@ class MaskRCNNLossComputation(object):
             # 当前图片上的每个roi对应的gt_box的label
             matched_idxs = matched_targets.get_field("matched_idxs")
 
+            # [num_roi_per_img]
             labels_per_image = matched_targets.get_field("labels")
             labels_per_image = labels_per_image.to(dtype=torch.int64)
 
@@ -109,6 +115,7 @@ class MaskRCNNLossComputation(object):
 
             positive_proposals = proposals_per_image[positive_inds]
 
+            # [num_roi_per_img, 28, 28]
             masks_per_image = project_masks_on_boxes(
                 segmentation_masks, positive_proposals, self.discretization_size
             )
@@ -130,8 +137,8 @@ class MaskRCNNLossComputation(object):
         """
         labels, mask_targets = self.prepare_targets(proposals, targets)
 
-        labels = cat(labels, dim=0)
-        mask_targets = cat(mask_targets, dim=0)
+        labels = cat(labels, dim=0)  # [num_roi]
+        mask_targets = cat(mask_targets, dim=0)  # [num_roi, 28, 28]
 
         positive_inds = torch.nonzero(labels > 0).squeeze(1)
         labels_pos = labels[positive_inds]
@@ -155,7 +162,7 @@ def make_roi_mask_loss_evaluator(cfg):
     )
 
     loss_evaluator = MaskRCNNLossComputation(
-        matcher, cfg.MODEL.ROI_MASK_HEAD.RESOLUTION  # 14
+        matcher, cfg.MODEL.ROI_MASK_HEAD.RESOLUTION  # 28
     )
 
     return loss_evaluator
