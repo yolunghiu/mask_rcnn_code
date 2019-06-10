@@ -15,11 +15,10 @@ def project_masks_on_boxes(segmentation_masks, proposals, discretization_size):
     :param proposals: BoxList对象, 代表一张图片上预测的所有roi
     :param discretization_size: 28
 
-    Given segmentation masks and the bounding boxes corresponding
-    to the location of the masks in the image, this function
-    crops and resizes the masks in the position defined by the
-    boxes. This prepares the masks for them to be fed to the
-    loss computation as the targets.
+    Given segmentation masks and the bounding boxes corresponding to the location
+    of the masks in the image, this function crops and resizes the masks in the
+    position defined by the boxes. This prepares the masks for them to be fed to \
+    the loss computation as the targets.
     """
     masks = []
     M = discretization_size  # 28
@@ -132,8 +131,10 @@ class MaskRCNNLossComputation(object):
             mask_logits (Tensor): [num_pos_roi, 81, 28, 28]
             targets (list[BoxList])
 
-        Return:
-            mask_loss (Tensor): scalar tensor containing the loss
+        mask_loss计算流程: 首先根据roi(proposals)和targets之间的IoU找到每个roi
+            对应的gt_box, 同时可以得到与这个gt_box对应的mask值, 将真实的mask值根
+            据对应的roi进行裁剪, 缩放, 处理成与mask_logits同样的大小(MxM), 然后计
+            算两者之间的交叉熵
         """
         labels, mask_targets = self.prepare_targets(proposals, targets)
 
@@ -148,6 +149,9 @@ class MaskRCNNLossComputation(object):
         if mask_targets.numel() == 0:
             return mask_logits.sum() * 0
 
+        # l_n = y_n * log[σ(x_n)] + (1-y_n) * log[1 - σ(x_n)]
+        # 这个损失函数结合了sigmoid函数和CE损失, 首先使用sigmoid函数把logits转换成0到1
+        # 之间的概率值, 然后计算预测的概率值与targets之间的交叉熵
         mask_loss = F.binary_cross_entropy_with_logits(
             mask_logits[positive_inds, labels_pos], mask_targets
         )

@@ -42,7 +42,7 @@ class ROIMaskHead(torch.nn.Module):
         # 创建MaskPostProcessor对象, 用于从所有类别的mask中选出概率值最大的类别
         self.post_processor = make_roi_mask_post_processor(cfg)
 
-        #
+        # 创建MaskRCNNLossComputation对象, 用于计算mask loss
         self.loss_evaluator = make_roi_mask_loss_evaluator(cfg)
 
     def forward(self, features, proposals, targets=None):
