@@ -41,9 +41,12 @@ class CombinedROIHeads(torch.nn.ModuleDict):
             if (self.training and self.cfg.MODEL.ROI_MASK_HEAD.SHARE_BOX_FEATURE_EXTRACTOR):
                 mask_features = x
 
+            # x: [num_pos_roi, 256, 14, 14]
+            # detections: 训练阶段直接返回proposals, 测试阶段是筛选之后的roi
             x, detections, loss_mask = self.mask(mask_features, detections, targets)
             losses.update(loss_mask)
 
+        # TODO: 暂时略过关键点检测
         if self.cfg.MODEL.KEYPOINT_ON:
             # 默认情况下使用ResNet backbone提取的特征
             keypoint_features = features
@@ -53,6 +56,7 @@ class CombinedROIHeads(torch.nn.ModuleDict):
 
             x, detections, loss_keypoint = self.keypoint(keypoint_features, detections, targets)
             losses.update(loss_keypoint)
+
         return x, detections, losses
 
 
