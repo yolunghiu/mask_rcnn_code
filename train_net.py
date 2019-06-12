@@ -25,7 +25,6 @@ def train(cfg, local_rank, distributed):
     # 创建GeneralizedRCNN()对象
     # detectors.py --> generalized_rcnn.py
     model = build_detection_model(cfg)
-    # print(model)
 
     # 'cpu' or 'cuda'
     device = torch.device(cfg.MODEL.DEVICE)
@@ -51,7 +50,9 @@ def train(cfg, local_rank, distributed):
     # 获取输出的文件夹路径, 默认为 '.'
     output_dir = cfg.OUTPUT_DIR
 
+    # 如果分布式训练不可用, 则将这个变量设置为True
     save_to_disk = get_rank() == 0
+
     checkpointer = DetectronCheckpointer(
         cfg, model, optimizer, scheduler, output_dir, save_to_disk
     )

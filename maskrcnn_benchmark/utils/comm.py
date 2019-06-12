@@ -11,6 +11,7 @@ import torch.distributed as dist
 
 
 def get_world_size():
+    """Returns the number of processes in the current process group"""
     if not dist.is_available():
         return 1
     if not dist.is_initialized():
@@ -19,6 +20,7 @@ def get_world_size():
 
 
 def get_rank():
+    """Returns the rank of current process group"""
     if not dist.is_available():
         return 0
     if not dist.is_initialized():
