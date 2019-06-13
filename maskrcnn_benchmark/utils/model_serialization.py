@@ -1,10 +1,7 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-from collections import OrderedDict
 import logging
+from collections import OrderedDict
 
 import torch
-
-from maskrcnn_benchmark.utils.imports import import_file
 
 
 def align_and_update_state_dicts(model_state_dict, loaded_state_dict):
@@ -22,18 +19,18 @@ def align_and_update_state_dicts(model_state_dict, loaded_state_dict):
     we want to match backbone[0].body.conv1.weight to conv1.weight, and
     backbone[0].body.res2.conv1.weight to res2.conv1.weight.
     """
-    current_keys = sorted(list(model_state_dict.keys()))
-    loaded_keys = sorted(list(loaded_state_dict.keys()))
-    # get a matrix of string matches, where each (i, j) entry correspond to the size of the
-    # loaded_key string, if it matches
+    current_keys = sorted(list(model_state_dict.keys()))  # M
+    loaded_keys = sorted(list(loaded_state_dict.keys()))  # N
+
+    # MxN个元素, (i, j)位置的元素代表与当前key匹配到的loaded_key字符串的长度, 或0(代表不匹配)
     match_matrix = [
         len(j) if i.endswith(j) else 0 for i in current_keys for j in loaded_keys
     ]
-    match_matrix = torch.as_tensor(match_matrix).view(
-        len(current_keys), len(loaded_keys)
-    )
+    match_matrix = torch.as_tensor(match_matrix).view(len(current_keys), len(loaded_keys))
+
+    # M, current_keys中每个key匹配到的loaded_key
     max_match_size, idxs = match_matrix.max(1)
-    # remove indices that correspond to no-match
+    # 将M个key中未匹配到pretrained model中的key的索引位置设为-1
     idxs[max_match_size == 0] = -1
 
     # used for logging
@@ -46,6 +43,8 @@ def align_and_update_state_dicts(model_state_dict, loaded_state_dict):
             continue
         key = current_keys[idx_new]
         key_old = loaded_keys[idx_old]
+
+        # 匹配到之后, 将pretrained model的参数加载到模型当中
         model_state_dict[key] = loaded_state_dict[key_old]
         logger.info(
             log_str_template.format(
@@ -59,6 +58,7 @@ def align_and_update_state_dicts(model_state_dict, loaded_state_dict):
 
 
 def strip_prefix_if_present(state_dict, prefix):
+    """去掉模型参数key中的前缀"""
     keys = sorted(state_dict.keys())
     if not all(key.startswith(prefix) for key in keys):
         return state_dict
@@ -70,11 +70,12 @@ def strip_prefix_if_present(state_dict, prefix):
 
 def load_state_dict(model, loaded_state_dict):
     model_state_dict = model.state_dict()
+
     # if the state_dict comes from a model that was wrapped in a
     # DataParallel or DistributedDataParallel during serialization,
     # remove the "module" prefix before performing the matching
     loaded_state_dict = strip_prefix_if_present(loaded_state_dict, prefix="module.")
     align_and_update_state_dicts(model_state_dict, loaded_state_dict)
 
-    # use strict loading
+    # 将预训练模型的参数加载到model_state_dict之后, 将其应用到模型当中
     model.load_state_dict(model_state_dict)

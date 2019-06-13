@@ -47,17 +47,19 @@ def train(cfg, local_rank, distributed):
     arguments = {}
     arguments["iteration"] = 0
 
-    # 获取输出的文件夹路径, 默认为 '.'
+    # 获取输出的文件夹路径, 默认为 '.', 配置文件中设置为'./log'
     output_dir = cfg.OUTPUT_DIR
 
     # 如果分布式训练不可用, 则将这个变量设置为True
     save_to_disk = get_rank() == 0
 
-    checkpointer = DetectronCheckpointer(
-        cfg, model, optimizer, scheduler, output_dir, save_to_disk
-    )
+    checkpointer = \
+        DetectronCheckpointer(cfg, model, optimizer, scheduler, output_dir, save_to_disk)
+
+    # cfg.MODEL.WEIGHT="catalog://ImageNetPretrained/MSRA/R-50"
+    # 这个实际上是个空字典, 预训练模型中只有'model'一个key
     extra_checkpoint_data = checkpointer.load(cfg.MODEL.WEIGHT)
-    arguments.update(extra_checkpoint_data)  # 字典的update方法, 对字典的键值进行更新
+    arguments.update(extra_checkpoint_data)
 
     data_loader = make_data_loader(
         cfg,

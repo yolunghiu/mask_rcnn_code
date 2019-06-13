@@ -55,11 +55,12 @@ def _rename_basic_resnet_weights(layer_keys):
     layer_keys = [k.replace("conv3.gn.s", "bn3.weight") for k in layer_keys]
     layer_keys = [k.replace("conv3.gn.bias", "bn3.bias") for k in layer_keys]
     layer_keys = [k.replace("downsample.0.gn.s", "downsample.1.weight") \
-        for k in layer_keys]
+                  for k in layer_keys]
     layer_keys = [k.replace("downsample.0.gn.bias", "downsample.1.bias") \
-        for k in layer_keys]
+                  for k in layer_keys]
 
     return layer_keys
+
 
 def _rename_fpn_weights(layer_keys, stage_names):
     for mapped_idx, stage_name in enumerate(stage_names, 1):
@@ -67,10 +68,11 @@ def _rename_fpn_weights(layer_keys, stage_names):
         if mapped_idx < 4:
             suffix = ".lateral"
         layer_keys = [
-            k.replace("fpn.inner.layer{}.sum{}".format(stage_name, suffix), "fpn_inner{}".format(mapped_idx)) for k in layer_keys
+            k.replace("fpn.inner.layer{}.sum{}".format(stage_name, suffix), "fpn_inner{}".format(mapped_idx)) for k in
+            layer_keys
         ]
-        layer_keys = [k.replace("fpn.layer{}.sum".format(stage_name), "fpn_layer{}".format(mapped_idx)) for k in layer_keys]
-
+        layer_keys = [k.replace("fpn.layer{}.sum".format(stage_name), "fpn_layer{}".format(mapped_idx)) for k in
+                      layer_keys]
 
     layer_keys = [k.replace("rpn.conv.fpn2", "rpn.conv") for k in layer_keys]
     layer_keys = [k.replace("rpn.bbox_pred.fpn2", "rpn.bbox_pred") for k in layer_keys]
@@ -82,6 +84,7 @@ def _rename_fpn_weights(layer_keys, stage_names):
 
 
 def _rename_weights_for_resnet(weights, stage_names):
+    # 加载的参数文件中所有参数的名称, 共214个
     original_keys = sorted(weights.keys())
     layer_keys = sorted(weights.keys())
 
@@ -162,14 +165,31 @@ C2_FORMAT_LOADER = Registry()
 @C2_FORMAT_LOADER.register("R-101-FPN-RETINANET")
 @C2_FORMAT_LOADER.register("R-152-FPN")
 def load_resnet_c2_format(cfg, f):
+    """
+    :param f: pkl文件的绝对路径
+    """
+    # dict, key为参数名, value为该参数对应的数值
     state_dict = _load_c2_pickled_weights(f)
-    conv_body = cfg.MODEL.BACKBONE.CONV_BODY
+
+    conv_body = cfg.MODEL.BACKBONE.CONV_BODY  # "R-50-FPN"
     arch = conv_body.replace("-C4", "").replace("-C5", "").replace("-FPN", "")
-    arch = arch.replace("-RETINANET", "")
-    stages = _C2_STAGE_NAMES[arch]
+    arch = arch.replace("-RETINANET", "")  # R-50
+
+    stages = _C2_STAGE_NAMES[arch]  # ["1.2", "2.3", "3.5", "4.2"]
     state_dict = _rename_weights_for_resnet(state_dict, stages)
+
     return dict(model=state_dict)
 
 
 def load_c2_format(cfg, f):
+    # "R-50-FPN"
     return C2_FORMAT_LOADER[cfg.MODEL.BACKBONE.CONV_BODY](cfg, f)
+
+if __name__ == '__main__':
+    f = '/home/liuhy/.torch/models/R-50.pkl'
+
+    state_dict = _load_c2_pickled_weights(f)
+    stages = ["1.2", "2.3", "3.5", "4.2"]
+
+    state_dict = _rename_weights_for_resnet(state_dict, stages)
+

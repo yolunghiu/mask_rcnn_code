@@ -49,16 +49,25 @@ class Checkpointer(object):
         self.tag_last_checkpoint(save_file)
 
     def load(self, f=None):
+        """
+        :param f: FPN中用到的配置是"catalog://ImageNetPretrained/MSRA/R-50"
+        :return:
+        """
+        # 如果checkpoint记录文件已经存在, 获取最近一次保存的模型pth文件路径
         if self.has_checkpoint():
-            # override argument with existing checkpoint
             f = self.get_checkpoint_file()
+
+        # 如果指定的预训练模型不存在, 直接返回
         if not f:
-            # no checkpoint could be found
             self.logger.info("No checkpoint found. Initializing model from scratch")
             return {}
+
         self.logger.info("Loading checkpoint from {}".format(f))
+        # 加载下载的预训练模型的参数
         checkpoint = self._load_file(f)
+        # 将预训练模型的参数应用到当前模型当中
         self._load_model(checkpoint)
+
         if "optimizer" in checkpoint and self.optimizer:
             self.logger.info("Loading optimizer from {}".format(f))
             self.optimizer.load_state_dict(checkpoint.pop("optimizer"))
@@ -70,13 +79,16 @@ class Checkpointer(object):
         return checkpoint
 
     def has_checkpoint(self):
+        """判断checkpoint记录文件是否存在"""
         save_file = os.path.join(self.save_dir, "last_checkpoint")
         return os.path.exists(save_file)
 
     def get_checkpoint_file(self):
+        """返回checkpoint文件中记录的最近一次保存的模型"""
         save_file = os.path.join(self.save_dir, "last_checkpoint")
         try:
             with open(save_file, "r") as f:
+                # "log/model_0007500.pth"
                 last_saved = f.read()
                 last_saved = last_saved.strip()
         except IOError:
@@ -91,9 +103,11 @@ class Checkpointer(object):
             f.write(last_filename)
 
     def _load_file(self, f):
+        """DetectronCheckpointer中这个方法被重写了"""
         return torch.load(f, map_location=torch.device("cpu"))
 
     def _load_model(self, checkpoint):
+        # 加载预训练模型参数之前, checkpoint字典中的'model'已经被弹出了
         load_state_dict(self.model, checkpoint.pop("model"))
 
 
@@ -114,25 +128,36 @@ class DetectronCheckpointer(Checkpointer):
         self.cfg = cfg.clone()
 
     def _load_file(self, f):
-        # catalog lookup
+        # f: catalog://ImageNetPretrained/MSRA/R-50
         if f.startswith("catalog://"):
+            # 把paths_catalog.py作为一个module导入, 这个文件的路径是配置文件中设置的
+            # 有可能存在于文件系统的任何位置, 因此不能直接import
             paths_catalog = import_file(
-                "maskrcnn_benchmark.config.paths_catalog", self.cfg.PATHS_CATALOG, True
+                "maskrcnn_benchmark.config.paths_catalog",
+                self.cfg.PATHS_CATALOG,  # paths_catalog.py的绝对路径
+                True
             )
+
+            # 'https://dl.fbaipublicfiles.com/detectron/ImageNetPretrained/MSRA/R-50.pkl'
+            # 获取pretrained model的url
             catalog_f = paths_catalog.ModelCatalog.get(f[len("catalog://"):])
             self.logger.info("{} points to {}".format(f, catalog_f))
             f = catalog_f
+
         # download url files
         if f.startswith("http"):
             # if the file is a url path, download it and cache it
             cached_f = cache_url(f)
             self.logger.info("url {} cached in {}".format(f, cached_f))
             f = cached_f
-        # convert Caffe2 checkpoint from pkl
+
+        # 把pkl文件转换成Caffe2模型文件
         if f.endswith(".pkl"):
             return load_c2_format(self.cfg, f)
+
         # load native detectron.pytorch checkpoint
         loaded = super(DetectronCheckpointer, self)._load_file(f)
         if "model" not in loaded:
             loaded = dict(model=loaded)
+
         return loaded

@@ -1,10 +1,9 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import os
 import sys
 
+from torch.utils.model_zoo import HASH_REGEX
 from torch.utils.model_zoo import _download_url_to_file
 from torch.utils.model_zoo import urlparse
-from torch.utils.model_zoo import HASH_REGEX
 
 from maskrcnn_benchmark.utils.comm import is_main_process
 from maskrcnn_benchmark.utils.comm import synchronize
@@ -27,19 +26,24 @@ def cache_url(url, model_dir=None, progress=True):
         model_dir (string, optional): directory in which to save the object
         progress (bool, optional): whether or not to display a progress bar to stderr
     Example:
-        >>> cached_file = maskrcnn_benchmark.utils.model_zoo.cache_url('https://s3.amazonaws.com/pytorch/models/resnet18-5c106cde.pth')
+        # >>> cached_file = maskrcnn_benchmark.utils.model_zoo.cache_url('https://s3.amazonaws.com/pytorch/models/resnet18-5c106cde.pth')
     """
+    # 如果未指定model_dir, 默认保存到~/.torch/models文件夹
     if model_dir is None:
         torch_home = os.path.expanduser(os.getenv('TORCH_HOME', '~/.torch'))
         model_dir = os.getenv('TORCH_MODEL_ZOO', os.path.join(torch_home, 'models'))
+
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
+
     parts = urlparse(url)
-    filename = os.path.basename(parts.path)
+    filename = os.path.basename(parts.path)  # 'R-50.pkl'
+
     if filename == "model_final.pkl":
         # workaround as pre-trained Caffe2 models from Detectron have all the same filename
         # so make the full path the filename by replacing / with _
         filename = parts.path.replace("/", "_")
+
     cached_file = os.path.join(model_dir, filename)
     if not os.path.exists(cached_file) and is_main_process():
         sys.stderr.write('Downloading: "{}" to {}\n'.format(url, cached_file))
@@ -53,4 +57,10 @@ def cache_url(url, model_dir=None, progress=True):
                 hash_prefix = None
         _download_url_to_file(url, cached_file, hash_prefix, progress=progress)
     synchronize()
+
     return cached_file
+
+
+if __name__ == '__main__':
+    url = 'https://dl.fbaipublicfiles.com/detectron/ImageNetPretrained/MSRA/R-50.pkl'
+    cache_url(url)
