@@ -68,7 +68,7 @@ def train(cfg, local_rank, distributed):
         start_iter=arguments["iteration"],
     )
 
-    checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
+    checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD  # 2500
 
     do_train(
         model,

@@ -1,4 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import bisect
 import copy
 import logging
@@ -28,20 +27,30 @@ def build_dataset(dataset_list, transforms, dataset_catalog, is_train=True):
         raise RuntimeError(
             "dataset_list should be a list of strings, got {}".format(dataset_list)
         )
+
     datasets = []
+
+    # dataset_list:
+    #   train: ("coco_2014_train", "coco_2014_valminusminival")
+    #   test: ("coco_2014_minival",)
     for dataset_name in dataset_list:
-        data = dataset_catalog.get(dataset_name)
+        data = dataset_catalog.get(dataset_name)  # DatasetCatalog.get()
+
+        # D <-> datasets, getattr(D, "COCODataset") <-> datasets.COCODataset
         factory = getattr(D, data["factory"])
-        args = data["args"]
-        # for COCODataset, we want to remove images without annotations
-        # during training
+        args = data["args"]  # dict, 包含root和ann_file两个键值对
+
+        # for COCODataset, remove images without annotations during training
         if data["factory"] == "COCODataset":
             args["remove_images_without_annotations"] = is_train
         if data["factory"] == "PascalVOCDataset":
             args["use_difficult"] = not is_train
         args["transforms"] = transforms
-        # make dataset from factory
-        dataset = factory(**args)
+
+        # **args: 'root', 'ann_file', 'remove_images_without_annotations', 'transforms'
+        # **args指的是在函数调用时自动把dict中的键值对转换成指定参数名调用函数的方式, 这种方式的好处是
+        #   参数名出现的顺序可以与函数参数定义时的顺序不一样
+        dataset = factory(**args)  # COCODataset(**args)
         datasets.append(dataset)
 
     # for testing, return a list of datasets
@@ -83,7 +92,7 @@ def _compute_aspect_ratios(dataset):
 
 
 def make_batch_data_sampler(
-    dataset, sampler, aspect_grouping, images_per_batch, num_iters=None, start_iter=0
+        dataset, sampler, aspect_grouping, images_per_batch, num_iters=None, start_iter=0
 ):
     if aspect_grouping:
         if not isinstance(aspect_grouping, (list, tuple)):
@@ -107,20 +116,22 @@ def make_batch_data_sampler(
 def make_data_loader(cfg, is_train=True, is_distributed=False, start_iter=0):
     num_gpus = get_world_size()
     if is_train:
-        images_per_batch = cfg.SOLVER.IMS_PER_BATCH
+        images_per_batch = cfg.SOLVER.IMS_PER_BATCH  # 2
         assert (
-            images_per_batch % num_gpus == 0
+                images_per_batch % num_gpus == 0
         ), "SOLVER.IMS_PER_BATCH ({}) must be divisible by the number "
         "of GPUs ({}) used.".format(images_per_batch, num_gpus)
+
         images_per_gpu = images_per_batch // num_gpus
         shuffle = True
-        num_iters = cfg.SOLVER.MAX_ITER
+        num_iters = cfg.SOLVER.MAX_ITER  # 720000
     else:
-        images_per_batch = cfg.TEST.IMS_PER_BATCH
+        images_per_batch = cfg.TEST.IMS_PER_BATCH  # 1
         assert (
-            images_per_batch % num_gpus == 0
+                images_per_batch % num_gpus == 0
         ), "TEST.IMS_PER_BATCH ({}) must be divisible by the number "
         "of GPUs ({}) used.".format(images_per_batch, num_gpus)
+
         images_per_gpu = images_per_batch // num_gpus
         shuffle = False if not is_distributed else True
         num_iters = None
@@ -147,9 +158,14 @@ def make_data_loader(cfg, is_train=True, is_distributed=False, start_iter=0):
     paths_catalog = import_file(
         "maskrcnn_benchmark.config.paths_catalog", cfg.PATHS_CATALOG, True
     )
+
     DatasetCatalog = paths_catalog.DatasetCatalog
+
+    # ("coco_2014_train", "coco_2014_valminusminival") for train
+    # ("coco_2014_minival",) for test
     dataset_list = cfg.DATASETS.TRAIN if is_train else cfg.DATASETS.TEST
 
+    # TODO:各个Transform中传入的两个参数image和target, 这里的target是什么?
     transforms = build_transforms(cfg, is_train)
     datasets = build_dataset(dataset_list, transforms, DatasetCatalog, is_train)
 

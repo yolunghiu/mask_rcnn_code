@@ -109,7 +109,12 @@ class DatasetCatalog(object):
     @staticmethod
     def get(name):
         if "coco" in name:
-            data_dir = DatasetCatalog.DATA_DIR
+            data_dir = DatasetCatalog.DATA_DIR  # "datasets"
+
+            #  {
+            #       "img_dir": "coco/train2014",
+            #       "ann_file": "coco/annotations/instances_train2014.json"
+            #  }
             attrs = DatasetCatalog.DATASETS[name]
             args = dict(
                 root=os.path.join(data_dir, attrs["img_dir"]),

@@ -1,4 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import random
 
 import torch
@@ -34,8 +33,8 @@ class Resize(object):
     # modified from torchvision to add support for max size
     def get_size(self, image_size):
         w, h = image_size
-        size = random.choice(self.min_size)
-        max_size = self.max_size
+        size = random.choice(self.min_size)  # 就是800
+        max_size = self.max_size  # 1333
         if max_size is not None:
             min_original_size = float(min((w, h)))
             max_original_size = float(max((w, h)))

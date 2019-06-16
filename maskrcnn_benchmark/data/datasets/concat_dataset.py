@@ -1,4 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import bisect
 
 from torch.utils.data.dataset import ConcatDataset as _ConcatDataset
