@@ -37,6 +37,14 @@ def has_valid_annotation(anno):
 
 
 class COCODataset(torchvision.datasets.coco.CocoDetection):
+    """
+    torch.util.data.Dataset
+     └──torchvision.datasets.coco.CocoDetection
+         └──COCODataset
+    Dataset类是个抽象类, 所有子类都应该实现__len__和__getitem__两个方法, 第一个
+    方法用来获取数据集的大小, 第二个方法用于使用索引的方式获取数据.
+
+    """
     def __init__(
         self, ann_file, root, remove_images_without_annotations, transforms=None
     ):
