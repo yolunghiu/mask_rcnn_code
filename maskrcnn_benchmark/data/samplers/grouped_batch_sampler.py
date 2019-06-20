@@ -15,6 +15,7 @@ class GroupedBatchSampler(BatchSampler):
 
     Arguments:
         sampler (Sampler): Base sampler.
+        group_ids (list): 每个样本对应的group id
         batch_size (int): Size of mini-batch.
         drop_uneven (bool): If ``True``, the sampler will drop the batches whose
             size is less than ``batch_size``
@@ -28,11 +29,12 @@ class GroupedBatchSampler(BatchSampler):
                 "torch.utils.data.Sampler, but got sampler={}".format(sampler)
             )
         self.sampler = sampler
-        self.group_ids = torch.as_tensor(group_ids)
+        self.group_ids = torch.as_tensor(group_ids)  # dataset中每个样本对应的group id
         assert self.group_ids.dim() == 1
         self.batch_size = batch_size
         self.drop_uneven = drop_uneven
 
+        # FIXME: 这个sort函数是多余的吧? API上写的参数sorted默认为True
         self.groups = torch.unique(self.group_ids).sort(0)[0]
 
         self._can_reuse_batches = False

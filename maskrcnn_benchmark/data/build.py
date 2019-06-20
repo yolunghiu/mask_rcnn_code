@@ -76,13 +76,21 @@ def make_data_sampler(dataset, shuffle, distributed):
 
 
 def _quantize(x, bins):
+    """ 根据bins对x中的每个元素进行分组, 这里只有0和1两组
+    :param x: aspect_ratios
+    :param bins: [1]
+    """
     bins = copy.copy(bins)
     bins = sorted(bins)
+
+    # 对x中的每个元素应用lambda表达式
     quantized = list(map(lambda y: bisect.bisect_right(bins, y), x))
+
     return quantized
 
 
 def _compute_aspect_ratios(dataset):
+    """计算Dataset中每张图片的高宽比(aspect ratio)"""
     aspect_ratios = []
     for i in range(len(dataset)):
         img_info = dataset.get_img_info(i)
@@ -94,10 +102,18 @@ def _compute_aspect_ratios(dataset):
 def make_batch_data_sampler(
         dataset, sampler, aspect_grouping, images_per_batch, num_iters=None, start_iter=0
 ):
+    """
+    :param aspect_grouping: [1]
+    :param num_iters: 720000
+    :param start_iter: 0
+    """
     if aspect_grouping:
         if not isinstance(aspect_grouping, (list, tuple)):
             aspect_grouping = [aspect_grouping]
+
+        # dataset中每张图片的高宽比
         aspect_ratios = _compute_aspect_ratios(dataset)
+
         group_ids = _quantize(aspect_ratios, aspect_grouping)
         batch_sampler = samplers.GroupedBatchSampler(
             sampler, group_ids, images_per_batch, drop_uneven=False
@@ -153,6 +169,7 @@ def make_data_loader(cfg, is_train=True, is_distributed=False, start_iter=0):
     # group images which have similar aspect ratio. In this case, we only
     # group in two cases: those with width / height > 1, and the other way around,
     # but the code supports more general grouping strategy
+    # 默认为True
     aspect_grouping = [1] if cfg.DATALOADER.ASPECT_RATIO_GROUPING else []
 
     paths_catalog = import_file(
@@ -165,18 +182,21 @@ def make_data_loader(cfg, is_train=True, is_distributed=False, start_iter=0):
     # ("coco_2014_minival",) for test
     dataset_list = cfg.DATASETS.TRAIN if is_train else cfg.DATASETS.TEST
 
-    # TODO:各个Transform中传入的两个参数image和target, 这里的target是什么?
+    # transform中传入的target指的是image对应的BoxList对象
     transforms = build_transforms(cfg, is_train)
+    # 创建COCODataset对象
     datasets = build_dataset(dataset_list, transforms, DatasetCatalog, is_train)
 
     data_loaders = []
     for dataset in datasets:
+        # 实际创建的是torch.utils.data.sampler.RandomSampler
         sampler = make_data_sampler(dataset, shuffle, is_distributed)
+
         batch_sampler = make_batch_data_sampler(
             dataset, sampler, aspect_grouping, images_per_gpu, num_iters, start_iter
         )
         collator = BatchCollator(cfg.DATALOADER.SIZE_DIVISIBILITY)
-        num_workers = cfg.DATALOADER.NUM_WORKERS
+        num_workers = cfg.DATALOADER.NUM_WORKERS  # 4
         data_loader = torch.utils.data.DataLoader(
             dataset,
             num_workers=num_workers,
