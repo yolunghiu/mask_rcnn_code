@@ -103,6 +103,7 @@ def make_batch_data_sampler(
         dataset, sampler, aspect_grouping, images_per_batch, num_iters=None, start_iter=0
 ):
     """
+    :param sampler: 本代码上下文中, 传入的应该是RandomSampler对象
     :param aspect_grouping: [1]
     :param num_iters: 720000
     :param start_iter: 0

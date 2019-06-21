@@ -4,17 +4,24 @@ import itertools
 import torch
 from torch.utils.data.sampler import BatchSampler
 from torch.utils.data.sampler import Sampler
+from torch.utils.data.sampler import SequentialSampler
+from torch.utils.data.sampler import RandomSampler
 
 
 class GroupedBatchSampler(BatchSampler):
     """
+    GroupedBatchSampler对另一个Sampler进行了包装.
+    首先, GroupedBatchSampler保证所有样本按照分组策略进行分组之后, 采样时同一组别的样本应该
+        出现在同一个batch当中.
+    另外, 这个类尽可能保证元素采样的顺序与构造对象时传入的Sampler产生的顺序一致.
+
     Wraps another sampler to yield a mini-batch of indices.
     It enforces that elements from the same group should appear in groups of batch_size.
     It also tries to provide mini-batches which follows an ordering which is
     as close as possible to the ordering from the original sampler.
 
     Arguments:
-        sampler (Sampler): Base sampler.
+        sampler (Sampler): Base sampler, 代码中传入的是RandomSampler
         group_ids (list): 每个样本对应的group id
         batch_size (int): Size of mini-batch.
         drop_uneven (bool): If ``True``, the sampler will drop the batches whose
@@ -34,15 +41,18 @@ class GroupedBatchSampler(BatchSampler):
         self.batch_size = batch_size
         self.drop_uneven = drop_uneven
 
-        # FIXME: 这个sort函数是多余的吧? API上写的参数sorted默认为True
+        # sort(0)返回的第一个值是排好序的tensor, 第二个值是排好序的元素在原数组中的索引值
         self.groups = torch.unique(self.group_ids).sort(0)[0]
 
         self._can_reuse_batches = False
 
     def _prepare_batches(self):
         dataset_size = len(self.group_ids)
-        # get the sampled indices from the sampler
+
+        # self.sampler返回的是这个sampler采样的样本在dataset中的索引值
+        # [0, 2, 4, 1, 3]
         sampled_ids = torch.as_tensor(list(self.sampler))
+
         # potentially not all elements of the dataset were sampled
         # by the sampler (e.g., DistributedSampler).
         # construct a tensor which contains -1 if the element was
@@ -50,22 +60,28 @@ class GroupedBatchSampler(BatchSampler):
         # order where the element was sampled.
         # for example. if sampled_ids = [3, 1] and dataset_size = 5,
         # the order is [-1, 1, -1, 0, -1]
+        # order中每个位置的元素代表dataset中对应位置的样本的采样次序
+        # 如: order[0]=1000, 代表第0个样本是第1000个被采样的样本
+        # key: dataset中元素索引, value: sample order
         order = torch.full((dataset_size,), -1, dtype=torch.int64)
         order[sampled_ids] = torch.arange(len(sampled_ids))
 
-        # get a mask with the elements that were sampled
+        # dataset的所有样本中被采样到的样本掩码
         mask = order >= 0
 
-        # find the elements that belong to each individual cluster
+        # list中包含两个list元素, 第一个元素代表属于第一个group的mask
         clusters = [(self.group_ids == i) & mask for i in self.groups]
-        # get relative order of the elements inside each cluster
-        # that follows the order from the sampler
+
+        # 每个组别内样本被采样的顺序
         relative_order = [order[cluster] for cluster in clusters]
-        # with the relative order, find the absolute order in the
-        # sampled space
+
+        # s[0]=1000: s中第0个元素是第1000个被采样的样本
+        # s.sort()[1], 对order进行排序, 取排序后对应顺序的索引
+        # s[s.sort()[1]], 按order排好序的 FIXME 这他妈不就是s.sort()[0]
         permutation_ids = [s[s.sort()[1]] for s in relative_order]
-        # permute each cluster so that they follow the order from
-        # the sampler
+
+        # s[0]=1000: s中第0个元素是第1000个被采样的样本
+        # sampled_ids[1000]=10: 第1000个被采样的样本是dataset中的第10个样本
         permuted_clusters = [sampled_ids[idx] for idx in permutation_ids]
 
         # splits each cluster in batch_size, and merge as a list of tensors
@@ -115,3 +131,9 @@ class GroupedBatchSampler(BatchSampler):
             self._batches = self._prepare_batches()
             self._can_reuse_batches = True
         return len(self._batches)
+
+
+if __name__ == '__main__':
+    import numpy as np
+    samp = RandomSampler(np.array([1,3,2,5,19]))
+    print(list(samp))
