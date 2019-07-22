@@ -78,19 +78,32 @@ def make_data_sampler(dataset, shuffle, distributed):
 
 
 def _quantize(x, bins):
+    """ 根据bins对x中的每个元素进行分组, 这里只有0和1两组
+    :param x: aspect_ratios
+    :param bins: [1]
+    """
     bins = copy.copy(bins)
     bins = sorted(bins)
 
+<<<<<<< HEAD
     # map() 函数的第一个参数是一个匿名函数, 第二个参数是一个列表, map函数会对列表中
     # 的每一个元素执行这个匿名函数
     # 目前bins是[1], 因此得到的结果中只有两种值, 0代表<1的元素, 1代表>1的元素
     # len(quantized) = len(x)
+=======
+    # 对x中的每个元素应用lambda表达式
+>>>>>>> c44bda18e48a0c90da4ffb658708e2b9f9c17c04
     quantized = list(map(lambda y: bisect.bisect_right(bins, y), x))
+
     return quantized
 
 
 def _compute_aspect_ratios(dataset):
+<<<<<<< HEAD
     """计算dataset中所有图片的高宽比"""
+=======
+    """计算Dataset中每张图片的高宽比(aspect ratio)"""
+>>>>>>> c44bda18e48a0c90da4ffb658708e2b9f9c17c04
     aspect_ratios = []
     for i in range(len(dataset)):
         img_info = dataset.get_img_info(i)
@@ -103,6 +116,7 @@ def make_batch_data_sampler(
         dataset, sampler, aspect_grouping, images_per_batch, num_iters=None, start_iter=0
 ):
     """
+<<<<<<< HEAD
     :param sampler: 用到的是RandomSampler
     :param aspect_grouping: [1], 目前是按照宽高比 >1 和 <=1 进行分组的
     :param images_per_batch: images_per_gpu
@@ -110,10 +124,24 @@ def make_batch_data_sampler(
     """
 
     if aspect_grouping:  # 按高宽比对图片进行分组, 取batch
+=======
+    :param sampler: 本代码上下文中, 传入的应该是RandomSampler对象
+    :param aspect_grouping: [1]
+    :param num_iters: 720000
+    :param start_iter: 0
+    """
+    if aspect_grouping:
+>>>>>>> c44bda18e48a0c90da4ffb658708e2b9f9c17c04
         if not isinstance(aspect_grouping, (list, tuple)):
             aspect_grouping = [aspect_grouping]
+
+        # dataset中每张图片的高宽比
         aspect_ratios = _compute_aspect_ratios(dataset)
+<<<<<<< HEAD
         # 根据aspect_ratios进行分组
+=======
+
+>>>>>>> c44bda18e48a0c90da4ffb658708e2b9f9c17c04
         group_ids = _quantize(aspect_ratios, aspect_grouping)
         batch_sampler = samplers.GroupedBatchSampler(
             sampler, group_ids, images_per_batch, drop_uneven=False
@@ -169,6 +197,7 @@ def make_data_loader(cfg, is_train=True, is_distributed=False, start_iter=0):
     # group images which have similar aspect ratio. In this case, we only
     # group in two cases: those with width / height > 1, and the other way around,
     # but the code supports more general grouping strategy
+    # 默认为True
     aspect_grouping = [1] if cfg.DATALOADER.ASPECT_RATIO_GROUPING else []
 
     paths_catalog = import_file(
@@ -182,12 +211,14 @@ def make_data_loader(cfg, is_train=True, is_distributed=False, start_iter=0):
     # ("coco_2014_minival",) for test
     dataset_list = cfg.DATASETS.TRAIN if is_train else cfg.DATASETS.TEST
 
-    # TODO:各个Transform中传入的两个参数image和target, 这里的target是什么?
+    # transform中传入的target指的是image对应的BoxList对象
     transforms = build_transforms(cfg, is_train)
+    # 创建COCODataset对象
     datasets = build_dataset(dataset_list, transforms, DatasetCatalog, is_train)
 
     data_loaders = []
     for dataset in datasets:
+<<<<<<< HEAD
         # 这里创建RandomSampler对象
         sampler = make_data_sampler(dataset, shuffle, is_distributed)
         # 创建BatchSampler对象
@@ -198,6 +229,16 @@ def make_data_loader(cfg, is_train=True, is_distributed=False, start_iter=0):
         collator = BatchCollator(cfg.DATALOADER.SIZE_DIVISIBILITY)  # 32
         # Number of data loading threads, 4
         num_workers = cfg.DATALOADER.NUM_WORKERS
+=======
+        # 实际创建的是torch.utils.data.sampler.RandomSampler
+        sampler = make_data_sampler(dataset, shuffle, is_distributed)
+
+        batch_sampler = make_batch_data_sampler(
+            dataset, sampler, aspect_grouping, images_per_gpu, num_iters, start_iter
+        )
+        collator = BatchCollator(cfg.DATALOADER.SIZE_DIVISIBILITY)
+        num_workers = cfg.DATALOADER.NUM_WORKERS  # 4
+>>>>>>> c44bda18e48a0c90da4ffb658708e2b9f9c17c04
         data_loader = torch.utils.data.DataLoader(
             dataset,
             num_workers=num_workers,
