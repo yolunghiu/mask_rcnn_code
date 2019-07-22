@@ -17,7 +17,7 @@ def build_dataset(dataset_list, transforms, dataset_catalog, is_train=True):
     """
     Arguments:
         dataset_list (list[str]): Contains the names of the datasets, i.e.,
-            coco_2014_trian, coco_2014_val, etc
+            coco_2014_train, coco_2014_val, etc
         transforms (callable): transforms to apply to each (image, target) sample
         dataset_catalog (DatasetCatalog): contains the information on how to
             construct a dataset.
@@ -34,9 +34,11 @@ def build_dataset(dataset_list, transforms, dataset_catalog, is_train=True):
     #   train: ("coco_2014_train", "coco_2014_valminusminival")
     #   test: ("coco_2014_minival",)
     for dataset_name in dataset_list:
+        # 是一个dict, 参考get()方法
         data = dataset_catalog.get(dataset_name)  # DatasetCatalog.get()
 
         # D <-> datasets, getattr(D, "COCODataset") <-> datasets.COCODataset
+        # factory: COCODataset or PascalVOCDataset
         factory = getattr(D, data["factory"])
         args = data["args"]  # dict, 包含root和ann_file两个键值对
 
@@ -57,7 +59,7 @@ def build_dataset(dataset_list, transforms, dataset_catalog, is_train=True):
     if not is_train:
         return datasets
 
-    # for training, concatenate all datasets into a single one
+    # 在训练阶段, 把所有训练集拼接成一个
     dataset = datasets[0]
     if len(datasets) > 1:
         dataset = D.ConcatDataset(datasets)
@@ -78,11 +80,17 @@ def make_data_sampler(dataset, shuffle, distributed):
 def _quantize(x, bins):
     bins = copy.copy(bins)
     bins = sorted(bins)
+
+    # map() 函数的第一个参数是一个匿名函数, 第二个参数是一个列表, map函数会对列表中
+    # 的每一个元素执行这个匿名函数
+    # 目前bins是[1], 因此得到的结果中只有两种值, 0代表<1的元素, 1代表>1的元素
+    # len(quantized) = len(x)
     quantized = list(map(lambda y: bisect.bisect_right(bins, y), x))
     return quantized
 
 
 def _compute_aspect_ratios(dataset):
+    """计算dataset中所有图片的高宽比"""
     aspect_ratios = []
     for i in range(len(dataset)):
         img_info = dataset.get_img_info(i)
@@ -94,10 +102,18 @@ def _compute_aspect_ratios(dataset):
 def make_batch_data_sampler(
         dataset, sampler, aspect_grouping, images_per_batch, num_iters=None, start_iter=0
 ):
-    if aspect_grouping:
+    """
+    :param sampler: 用到的是RandomSampler
+    :param aspect_grouping: [1], 目前是按照宽高比 >1 和 <=1 进行分组的
+    :param images_per_batch: images_per_gpu
+    :param num_iters: 在配置文件中配置的迭代次数
+    """
+
+    if aspect_grouping:  # 按高宽比对图片进行分组, 取batch
         if not isinstance(aspect_grouping, (list, tuple)):
             aspect_grouping = [aspect_grouping]
         aspect_ratios = _compute_aspect_ratios(dataset)
+        # 根据aspect_ratios进行分组
         group_ids = _quantize(aspect_ratios, aspect_grouping)
         batch_sampler = samplers.GroupedBatchSampler(
             sampler, group_ids, images_per_batch, drop_uneven=False
@@ -159,7 +175,8 @@ def make_data_loader(cfg, is_train=True, is_distributed=False, start_iter=0):
         "maskrcnn_benchmark.config.paths_catalog", cfg.PATHS_CATALOG, True
     )
 
-    DatasetCatalog = paths_catalog.DatasetCatalog
+    # maskrcnn_benchmark.config.paths_catalog.py
+    DatasetCatalog = paths_catalog.DatasetCatalog  # 将DatasetCatalog对象赋值给该变量
 
     # ("coco_2014_train", "coco_2014_valminusminival") for train
     # ("coco_2014_minival",) for test
@@ -171,11 +188,15 @@ def make_data_loader(cfg, is_train=True, is_distributed=False, start_iter=0):
 
     data_loaders = []
     for dataset in datasets:
+        # 这里创建RandomSampler对象
         sampler = make_data_sampler(dataset, shuffle, is_distributed)
+        # 创建BatchSampler对象
         batch_sampler = make_batch_data_sampler(
             dataset, sampler, aspect_grouping, images_per_gpu, num_iters, start_iter
         )
-        collator = BatchCollator(cfg.DATALOADER.SIZE_DIVISIBILITY)
+        # todo: 目前不清楚这个干啥的, 看看再说
+        collator = BatchCollator(cfg.DATALOADER.SIZE_DIVISIBILITY)  # 32
+        # Number of data loading threads, 4
         num_workers = cfg.DATALOADER.NUM_WORKERS
         data_loader = torch.utils.data.DataLoader(
             dataset,

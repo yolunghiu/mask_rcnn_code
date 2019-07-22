@@ -1,4 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import itertools
 
 import torch
@@ -19,6 +18,9 @@ class GroupedBatchSampler(BatchSampler):
         drop_uneven (bool): If ``True``, the sampler will drop the batches whose
             size is less than ``batch_size``
 
+    notes:
+        Pytorch中的Sampler必须实现 __iter__ 和 __len__ 两个方法
+        这个采样器的作用就是根据分组方法
     """
 
     def __init__(self, sampler, group_ids, batch_size, drop_uneven=False):
@@ -33,6 +35,7 @@ class GroupedBatchSampler(BatchSampler):
         self.batch_size = batch_size
         self.drop_uneven = drop_uneven
 
+        # 这里只包含[0, 1]两个元素
         self.groups = torch.unique(self.group_ids).sort(0)[0]
 
         self._can_reuse_batches = False
@@ -51,10 +54,11 @@ class GroupedBatchSampler(BatchSampler):
         order = torch.full((dataset_size,), -1, dtype=torch.int64)
         order[sampled_ids] = torch.arange(len(sampled_ids))
 
-        # get a mask with the elements that were sampled
+        # mask的长度是数据集中所有图片的数量, mask中被采样到的元素为1, 未被采样为0
         mask = order >= 0
 
         # find the elements that belong to each individual cluster
+        # list中是两个tensor, 每个tensor长度一样, 包含0和1两种元素
         clusters = [(self.group_ids == i) & mask for i in self.groups]
         # get relative order of the elements inside each cluster
         # that follows the order from the sampler

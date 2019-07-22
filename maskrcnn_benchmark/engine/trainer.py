@@ -50,7 +50,10 @@ def do_train(
     meters = MetricLogger(delimiter="  ")
     max_iter = len(data_loader)
     start_iter = arguments["iteration"]
+
+    # model.train()与model.eval()对应, 主要是指定模型所处的阶段, 以调整Dropout, BN等
     model.train()
+
     start_training_time = time.time()
     end = time.time()
     for iteration, (images, targets, _) in enumerate(data_loader, start_iter):
@@ -58,6 +61,8 @@ def do_train(
         iteration = iteration + 1
         arguments["iteration"] = iteration
 
+        # https://blog.csdn.net/qq_20622615/article/details/83150963
+        # 这里是每个mini-batch更新一次, 用于计数以调整学习率
         scheduler.step()
 
         images = images.to(device)
