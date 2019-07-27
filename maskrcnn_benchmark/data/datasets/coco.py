@@ -1,11 +1,9 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import torch
 import torchvision
 
 from maskrcnn_benchmark.structures.bounding_box import BoxList
 from maskrcnn_benchmark.structures.segmentation_mask import SegmentationMask
 from maskrcnn_benchmark.structures.keypoint import PersonKeypoints
-
 
 min_keypoints_per_image = 10
 
@@ -24,9 +22,7 @@ def _has_only_empty_bbox(anno):
 
 
 def has_valid_annotation(anno):
-    """
-    判断传入的annotation中是否存在正常的注解
-    """
+    """判断传入的annotation中是否存在合法的注解"""
     # if it's empty, there is no annotation
     if len(anno) == 0:
         return False
@@ -47,16 +43,18 @@ def has_valid_annotation(anno):
 
 class COCODataset(torchvision.datasets.coco.CocoDetection):
     """
-    torch.util.data.Dataset
-     └──torchvision.datasets.coco.CocoDetection
-         └──COCODataset
-    Dataset类是个抽象类, 所有子类都应该实现__len__和__getitem__两个方法, 第一个
-    方法用来获取数据集的大小, 第二个方法用于使用索引的方式获取数据.
-    CocoDetection类继承Dataset类, 实现了上述两个抽象方法.
-    COCODataset
+    notes:
+        torch.util.data.Dataset
+         └──torchvision.datasets.coco.CocoDetection
+             └──COCODataset
+        Dataset类是个抽象类, 所有子类都应该实现__len__和__getitem__两个方法, 第一个
+        方法用来获取数据集的大小, 第二个方法用于使用索引的方式获取数据.
+        CocoDetection类继承Dataset类, 实现了上述两个抽象方法.
+        COCODataset
     """
+
     def __init__(
-        self, ann_file, root, remove_images_without_annotations, transforms=None
+            self, ann_file, root, remove_images_without_annotations, transforms=None
     ):
         super(COCODataset, self).__init__(root, ann_file)
         # sort indices for reproducible results
@@ -73,6 +71,7 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
             self.ids = ids
 
         # v: json文件中注解使用的id, i+1: 从1开始重新编号的category id
+        # json注解中共80个类别, 但是类别编号不连续, 最小是1, 最大是90
         self.json_category_id_to_contiguous_id = {
             v: i + 1 for i, v in enumerate(self.coco.getCatIds())
         }
@@ -81,6 +80,7 @@ class COCODataset(torchvision.datasets.coco.CocoDetection):
             v: k for k, v in self.json_category_id_to_contiguous_id.items()
         }
         # k: 从0开始的编号, 最大值是数据集中图片的数量-1; v: image id
+        # 与category_id一样, img_id也是不连续的
         self.id_to_img_map = {k: v for k, v in enumerate(self.ids)}
         self.transforms = transforms
 

@@ -43,11 +43,8 @@ class GroupedBatchSampler(BatchSampler):
         self.batch_size = batch_size
         self.drop_uneven = drop_uneven
 
-<<<<<<< HEAD
         # 这里只包含[0, 1]两个元素
-=======
         # sort(0)返回的第一个值是排好序的tensor, 第二个值是排好序的元素在原数组中的索引值
->>>>>>> c44bda18e48a0c90da4ffb658708e2b9f9c17c04
         self.groups = torch.unique(self.group_ids).sort(0)[0]
 
         self._can_reuse_batches = False
@@ -72,18 +69,11 @@ class GroupedBatchSampler(BatchSampler):
         order = torch.full((dataset_size,), -1, dtype=torch.int64)
         order[sampled_ids] = torch.arange(len(sampled_ids))
 
-<<<<<<< HEAD
         # mask的长度是数据集中所有图片的数量, mask中被采样到的元素为1, 未被采样为0
         mask = order >= 0
 
         # find the elements that belong to each individual cluster
         # list中是两个tensor, 每个tensor长度一样, 包含0和1两种元素
-=======
-        # dataset的所有样本中被采样到的样本掩码
-        mask = order >= 0
-
-        # list中包含两个list元素, 第一个元素代表属于第一个group的mask
->>>>>>> c44bda18e48a0c90da4ffb658708e2b9f9c17c04
         clusters = [(self.group_ids == i) & mask for i in self.groups]
 
         # 每个组别内样本被采样的顺序
@@ -131,6 +121,7 @@ class GroupedBatchSampler(BatchSampler):
             batches = kept
         return batches
 
+
     def __iter__(self):
         if self._can_reuse_batches:
             batches = self._batches
@@ -139,6 +130,7 @@ class GroupedBatchSampler(BatchSampler):
             batches = self._prepare_batches()
         self._batches = batches
         return iter(batches)
+
 
     def __len__(self):
         if not hasattr(self, "_batches"):
@@ -149,5 +141,6 @@ class GroupedBatchSampler(BatchSampler):
 
 if __name__ == '__main__':
     import numpy as np
-    samp = RandomSampler(np.array([1,3,2,5,19]))
+
+    samp = RandomSampler(np.array([1, 3, 2, 5, 19]))
     print(list(samp))
